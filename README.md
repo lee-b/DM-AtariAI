@@ -11,11 +11,11 @@ Goals:
     *Setup ALE Fifo Interface
     *Implment Deep Mind bot
     *Verify Performance
-    *Extend to 1)Falppy Bird 2)2048
+    *Extend to 1)Flappy Bird 2)2048
     
   Haskell:
   
     *Setup ALE Fifo Interface
     *Implment Deep Mind bot
     *Verify Performance
-    *Extend to 1)Falppy Bird 2)2048
+    *Extend to 1)Flappy Bird 2)2048
