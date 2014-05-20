@@ -1,7 +1,7 @@
 DM-AtariAI
 ==========
 
-A Python and hopefully Haskell implementation of the Deep Mind Atari bot with extensions
+A Python and hopefully Haskell implementation of the Deep Mind Atari bot with extensions running on the ALE platform with FIFO interface
 
 
 Goals:
