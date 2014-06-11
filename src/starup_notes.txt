@@ -1,0 +1,20 @@
+1) start ale with command from script
+	Terminal 1: ale command
+
+2) Compile haskell bot
+	Serial:
+		ghc -o ale_interface.hs
+	Concurent:
+		ghc -o -threaded ale_interface.hs
+
+3) start bot
+	Serial:
+		./ale_interface
+	Concurent with 2 cores:
+		./ale_interface +RTS -N2
+	Concurent with all available cores:
+		./ale_interface +RTS -N
+
+4) Once haskell script run pauses - Cat output to terminals to view messgaes
+		Terminal 2: cat ale_fifo_in
+		Terminal 3: cat ale_fifo_out
