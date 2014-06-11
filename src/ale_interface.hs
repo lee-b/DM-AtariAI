@@ -1,53 +1,5 @@
---module Main where
- 
---import qualified Data.Map as M
- 
---errorsPerLine = M.fromList
---    [ ("Chris", 472), ("Don", 100), ("Simon", -5) ]
- 
---main = do putStrLn "Who are you?"
---          name <- getLine
---          case M.lookup name errorsPerLine of
---              Nothing -> putStrLn "I don't know you"
---              Just n  -> do putStr "Errors per line: "
---                            print n
-
-
--- #############################################################
-
----- file: ch07/toupper-imp.hs
---import System.IO
---import Data.Char(toUpper)
-
---main :: IO ()
---main = do 
---       inh <- openFile "ale_fifo_out" ReadMode
---       outh <- openFile "ale_fifo_in" WriteMode
---       mainloop inh outh
---       hClose inh
---       hClose outh
-
---mainloop :: Handle -> Handle -> IO ()
---mainloop inh outh = 
---    do ineof <- hIsEOF inh
---       if ineof
---           then return ()
---           else do inpStr <- hGetLine inh
---                   hPutStrLn outh (map toUpper inpStr)
---                   mainloop inh outh
-
 module Main where
-
 import System.Process
-import System.IO
-
-import Control.Parallel
-import Control.Concurrent
-import System.Environment
-import System.FilePath
-
-import Control.Monad
-import System.IO
 import System.Posix.Files
 import System.Posix.IO
 
