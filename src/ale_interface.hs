@@ -1,45 +1,61 @@
+-- Author: Hamzeh Alsalhi <93hamsal@gmail.com>
+
 module Main where
-import System.Process
-import System.Posix.Files
-import System.Posix.IO
+  import System.Process
+  import System.Posix.Files
+  import System.Posix.IO
+  import System.IO
+  import qualified Data.Vector as V
+  import Control.Concurrent
+  import System.Directory
 
-main = do (readProcess "rm" ["ale_fifo_out"] "")
-          (readProcess "rm" ["ale_fifo_in"] "")
-          createNamedPipe "ale_fifo_out" $ unionFileModes ownerReadMode ownerWriteMode
-          createNamedPipe "ale_fifo_in"  $ unionFileModes ownerReadMode ownerWriteMode
-         
-          let toA_IO = openFd "ale_fifo_in"   WriteOnly Nothing defaultFileFlags
-          let fromA_IO = openFd "ale_fifo_out" ReadOnly  Nothing defaultFileFlags
-          putStrLn "Hangtest 1"      
-          
-          -- Command 1)  ./ale_interface > output.txt & ../ale/ale_0.4.4/ale_0_4/ale -max_num_episodes 5 -game_controller fifo_named -disable_colour_averaging true -run_length_encoding false -frame_skip 0 -display_screen true ../ale/ale_0.4.4/ale_0_4/roms/space_invaders.bin
+  mem_sz = 50
 
-          fromA <- fromA_IO
-          putStrLn "Hangtest 3"
+  main = 
+   do fo_ex <- doesFileExist "ale_fifo_out"
+      fi_ex <- doesFileExist "ale_fifo_in"
 
-          toA <- toA_IO   
-          putStrLn "Hangtest 2"
+      case fo_ex of True -> (readProcess "rm" ["ale_fifo_out"] "")
+                    False -> (readProcess "ls" [] "")
 
-          (str, _len) <- fdRead fromA (160 * 210 * 2 + 200)
-          putStrLn str
-          putStrLn "Hangtest 4"
-          
-          fdWrite toA "1,0,0,1\n"
-          putStrLn "Hangtest 5"
+      case fi_ex of True -> (readProcess "rm" ["ale_fifo_in"] "")
+                    False -> (readProcess "ls" [] "")
 
-          (str, _len) <- fdRead fromA (160 * 210 * 2 + 200)
-          putStrLn str
-          fdWrite toA "1,18\n" -- first action must be 1,1 to satrt game
+      createNamedPipe "ale_fifo_out" $ unionFileModes ownerReadMode 
+        ownerWriteMode
+      createNamedPipe "ale_fifo_in"  $ unionFileModes ownerReadMode 
+        ownerWriteMode
 
-          foreverPrint fromA toA
+      let memory = []
+      let toA_IO = openFd "ale_fifo_in"   WriteOnly Nothing 
+                    defaultFileFlags
+      let fromA_IO = openFd "ale_fifo_out" ReadOnly  Nothing 
+                    defaultFileFlags  
 
-foreverPrint fin fout = do (str, _len) <- fdRead fin (160 * 210 * 2 + 200)
-                           fdWrite fout "3,18\n"
-                           --x <- getChar
-                           putStrLn str
-                           putStrLn "####"
-                           foreverPrint fin fout
+      fromA <- fromA_IO
+      toA <- toA_IO
 
--- June 11 - FIFO read from ALE works!
-     -- run this
-     -- start ale
+      (str, _len) <- fdRead fromA (67206)
+      putStrLn str
+      fdWrite toA "1,0,0,1\n"
+
+      (str, _len) <- fdRead fromA (67206)
+      putStrLn str
+      -- first action must be 1 to satrt game
+      fdWrite toA "1,18\n"
+
+      hndl_in <- fdToHandle fromA
+      foreverPrint hndl_in toA memory 0
+
+  foreverPrint hndl_in fout mem l = 
+   do str <- hGetLine hndl_in
+      --let mem_n = mem V.++ (V.singleton str)
+      fdWrite fout "0,18\n"
+      putStrLn ("Screen string " ++ (take 8 (reverse (take 10 (reverse str)))) 
+        ++  "... has length " ++ (show (length str)))
+      --putStrLn (show (V.length mem_n))
+      putStrLn (show (length mem))
+      case (l >= mem_sz) of True ->  foreverPrint hndl_in fout 
+                                      (str : init mem) l
+                            False -> foreverPrint hndl_in fout 
+                                      (str : mem) (l + 1)
