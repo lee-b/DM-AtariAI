@@ -12,8 +12,10 @@ import Data.List.Split
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Array.Repa as R
 import qualified Text.Parsec.Token as PT
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Char8 as C
 
-memSz = 50
+memSz = 10000 -- Comes out to ~1.3005 GB of memory 
 aleScrnSz = (160, 210)
 
 main = 
@@ -41,30 +43,30 @@ main =
 
     toA <- toA_IO
 
-    str <- hGetLine hndl_in
+    str <- C.hGetLine hndl_in
     --putStrLn str
     fdWrite toA "1,0,0,1\n"
 
-    str <- hGetLine hndl_in
+    str <- C.hGetLine hndl_in
     --putStrLn str
     -- first action must be 1 to satrt game
     fdWrite toA "1,18\n"
 
-    foreverPrint hndl_in toA ([]) 0 0
+    foreverPrint hndl_in toA V.empty 0 0
 
 foreverPrint hndl_in fout mem l i = 
  mem `seq` i `seq` l `seq` 
- do str <- hGetLine hndl_in
-    if (i > 1) then putStrLn (show (foldl (+) 0.0 (foldl (++) [] mem))) else putStrLn "Mem too small"
+ do str <- C.hGetLine hndl_in
+    --if (i > 1) then putStrLn (show (VU.foldl (+) 0.0 (V.foldl (VU.++) VU.empty mem))) else putStrLn "Mem too small"
     --let h = map (map (\x -> x + 1.0)) mem
-    let strTkns = splitOn ":" str
+    let strTkns = C.split ':' str
     let (scrStr, epInfo) = (strTkns!!0, strTkns!!1)
     fdWrite fout "0,18\n"
     let smallScr = scrnToNnInp scrStr
     putStrLn (show i)
     case (l >= memSz) of  
-      True ->  foreverPrint hndl_in fout (smallScr : (init mem)) l (i + 1)
-      False -> foreverPrint hndl_in fout (smallScr : mem) (l + 1) (i + 1)
+      True ->  foreverPrint hndl_in fout (smallScr `V.cons` (V.init mem)) l (i + 1)
+      False -> foreverPrint hndl_in fout (smallScr `V.cons` mem) (l + 1) (i + 1)
 
 -- Screen space interested in, specified as (upperLeftCoord, lowerRightCoord)
 nnImgSz = (80, 80)
@@ -78,20 +80,19 @@ scrnToNnInp scr =
     -- scr tuple, (screen as list of doubles, resolution as int tuple)
 
   -- Make hex list from string
-  let hxLs = chunksOf 2 scr in
+  scr `seq` let hxLs = chunksOf 2 (C.unpack scr) in
+  
   -- Crop 33 rows off of Top and 17 rows off of bottom
-  let crpHxLs = drop (33 * 160) (take (193 * 160) hxLs) in
-  -- Downsize to nnImgSz
-  let colDropNnHxLs = map head (chunksOf 2 crpHxLs) in
-  let rowDropNnHxLs = foldl (++) [] (map head (chunksOf 2 (chunksOf 80 colDropNnHxLs))) in
-  -- XXX: Better resize function if necessary, this hack only drops evey other
-  -- and will not give a good quality result http://stackoverflow.com/questions
-  -- /6133957/image-downsampling-algorithms
+  hxLs `seq` let crpHxLs = drop (33 * 160) (take (193 * 160) hxLs) in
+  
+  -- Downsize to nnImgSz, XXX: Better Resize
+  crpHxLs `seq` let colDropNnHxLs = map head (chunksOf 2 crpHxLs) in
+  colDropNnHxLs `seq` let rowDropNnHxLs = foldl (++) [] (map head (chunksOf 2 (chunksOf 80 colDropNnHxLs))) in
+
   -- Convert to Grayscale
-  let grayImg = [magicArray R.! (R.Z R.:. ((hTD (hex!!1))::Int) R.:. ((hTD  (hex!!0))::Int)) | hex <- rowDropNnHxLs] in
-  --let sum = foldl (+) 0.0 grayImg in 
-  --(sum == 0.0) `seq` grayImg
-  grayImg
+  rowDropNnHxLs `seq` let grayImg = VU.fromList [magicArray R.! (R.Z R.:. ((hTD (hex!!1))::Int) R.:. ((hTD  (hex!!0))::Int)) | hex <- rowDropNnHxLs] in
+
+  rowDropNnHxLs `seq` grayImg
 
 magicArray = 
   R.fromListUnboxed (R.Z R.:. (8::Int) R.:. (16::Int)) magicNumbers
