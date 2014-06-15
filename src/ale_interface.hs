@@ -9,7 +9,7 @@ import Control.Concurrent
 import System.Directory
 import qualified Data.Vector as V
 import Data.List.Split
-import qualified Data.Vector.Unboxed
+import qualified Data.Vector.Unboxed as VU
 import qualified Data.Array.Repa as R
 import qualified Text.Parsec.Token as PT
 
@@ -50,63 +50,47 @@ main =
     -- first action must be 1 to satrt game
     fdWrite toA "1,18\n"
 
-    foreverPrint hndl_in toA [] 0
+    foreverPrint hndl_in toA ([]) 0 0
 
-foreverPrint hndl_in fout mem l = 
+foreverPrint hndl_in fout mem l i = 
+ mem `seq` i `seq` l `seq` 
  do str <- hGetLine hndl_in
-    --let mem_n = mem V.++ (V.singleton str)
+    if (i > 1) then putStrLn (show (foldl (+) 0.0 (foldl (++) [] mem))) else putStrLn "Mem too small"
+    --let h = map (map (\x -> x + 1.0)) mem
     let strTkns = splitOn ":" str
-    putStrLn ("Number of tokens " ++ show(length(strTkns)))
-    putStrLn ("Tkn 1 " ++ (take 10 (strTkns!!0)))
-    putStrLn ("Tkn 2 " ++ strTkns!!1)
-    putStrLn ("Tkn 3 " ++ strTkns!!2)
     let (scrStr, epInfo) = (strTkns!!0, strTkns!!1)
-    --let dubs = [[x,y] | x <- ['A'..'z'] ++ ['1'..'9'], y <- ['A'..'z'] ++ ['1'..'9']]
-    let hxLs = chunksOf 2 scrStr
-    putStrLn (show (length hxLs))
-    --putStrLn (show ([ (x,c) | x<-dubs, let c = (length.filter (==x)) hxLs, c>0 ]))
     fdWrite fout "0,18\n"
-    putStrLn ("Screen string " ++ take 10 scrStr ++  "... has length " ++ (show (length scrStr)))
-    putStrLn ("Epsiode info " ++ epInfo)
-    --putStrLn (show (V.length mem_n))
-    putStrLn (show (length mem))
-    let (smallScr,_) = scrnToNnInp (str, aleScrnSz)
-    putStrLn (show (smallScr))
-    case (l >= memSz) of  True ->  foreverPrint hndl_in fout
-                                    (smallScr : init mem) l
-                          False -> foreverPrint hndl_in fout
-                                    (smallScr : mem) (l + 1)
+    let smallScr = scrnToNnInp scrStr
+    putStrLn (show i)
+    case (l >= memSz) of  
+      True ->  foreverPrint hndl_in fout (smallScr : (init mem)) l (i + 1)
+      False -> foreverPrint hndl_in fout (smallScr : mem) (l + 1) (i + 1)
 
 -- Screen space interested in, specified as (upperLeftCoord, lowerRightCoord)
-roi = ((0, 33),(160,193))
 nnImgSz = (80, 80)
 
 scrnToNnInp scr = 
   -- Takes a raw uncroped screen string from ale and makes the full 
   -- transformation into an input ready for the neural network
-
   -- Param:
     -- scr tuple, (screen string, resolution as int tuple)
-
   -- Result:
     -- scr tuple, (screen as list of doubles, resolution as int tuple)
- 
-  -- XXX: Assert length of screen string is even
+
   -- Make hex list from string
-  let hxLs = (chunksOf 2 (fst scr), snd scr) in
+  let hxLs = chunksOf 2 scr in
   -- Crop 33 rows off of Top and 17 rows off of bottom
-  let crpHxLs = (drop (33 * fst (snd hxLs)) (take (193 * fst (snd hxLs)) (fst hxLs)) , (160, 160)) in
-  -- XXX: Assert res of scr string is 160, 160
+  let crpHxLs = drop (33 * 160) (take (193 * 160) hxLs) in
   -- Downsize to nnImgSz
-  let colDropNnHxLs = (map head (chunksOf 2 (fst crpHxLs)), (80,160)) in
-  let rowDropNnHxLs = (foldr (++) [] (map head (chunksOf 2 (chunksOf 80 (fst colDropNnHxLs)))), (80,80)) in
-  -- XXX: Assert res of scr string is 80, 80
+  let colDropNnHxLs = map head (chunksOf 2 crpHxLs) in
+  let rowDropNnHxLs = foldl (++) [] (map head (chunksOf 2 (chunksOf 80 colDropNnHxLs))) in
   -- XXX: Better resize function if necessary, this hack only drops evey other
   -- and will not give a good quality result http://stackoverflow.com/questions
   -- /6133957/image-downsampling-algorithms
-
-  -- XXX: Convert to Grayscale
-  let grayImg = ([magicArray R.! (R.Z R.:. ((hTD (hex!!1))::Int) R.:. ((hTD  (hex!!0))::Int)) | hex <- fst rowDropNnHxLs], (80, 80)) in
+  -- Convert to Grayscale
+  let grayImg = [magicArray R.! (R.Z R.:. ((hTD (hex!!1))::Int) R.:. ((hTD  (hex!!0))::Int)) | hex <- rowDropNnHxLs] in
+  --let sum = foldl (+) 0.0 grayImg in 
+  --(sum == 0.0) `seq` grayImg
   grayImg
 
 magicArray = 
