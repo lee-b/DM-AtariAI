@@ -11,6 +11,9 @@ import System.Posix.IO
 import System.Random
 import qualified Data.Array.Repa as R
 import qualified Data.Array.Repa.Algorithms.Randomish as RR
+import qualified Data.Array.Repa.Algorithms.Matrix as RM
+import qualified Data.Array.Repa.Repr.Unboxed as RU
+import qualified Data.Array.Repa.Index as RI
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
 import qualified Data.Vector as V
