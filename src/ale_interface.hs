@@ -113,6 +113,28 @@ cnvLyr1 input =
       convOutpt = 0.0 -- XXX
   in []
 
+convolve img imdDim fltr flrDim strd = 
+  -- Neural network convolution
+  -- both inputs are 4d tensors, second dimension must match
+  let bRange = [1..(imdDim!!0)]
+      kRange = [1..(fltrDim!!0)]
+      combRange = [(b,k) | b <- bRange, y <- kRange] 
+      mapHelper (b,k) = 
+        -- Takes the Image batchSize index and the filter batchSize index
+        -- returns a 2d matrix as the resul of convolving using stride strd
+        -- img[b, i, : , :] with fltr[k, i, :, :] for all i, and summing over i
+        let iRange = [1..(imdDim!!1)]
+            iResults = map conv2D [(R.slice img (R.Z R.:. (b :: Int) R.:. (i :: Int) R.:. R.All R.:. R.All) R.DIM2 R.Double, R.slice fltr (R.Z R.:. (k :: Int) R.:. (i :: Int) R.:. R.All R.:. R.All) R.DIM2 R.Double, strd) | i <- iRangeR]
+            2DRes = foldl (R.+^) (head iResults) (tail iResults) in 
+        -- XXX possibly we might need a computeUnboxedP here before reutrn
+        2DRes
+      2DResAllbk = map mapHelper combRange
+      -- XXX pickup here, 2DResAllbk is a list of 2d matricies, we need to flatten all the lists, join them in the correct order, and then reshape to the corretly dimension 4d tensor
+
+conv2D (img, fltr, strd)
+  -- vanilla 2d convultion with stride strd
+  -- XXX: copy the repa convovle code and alter to work with stride
+  []
 
 cnvLyr2 = []
 cnctdLyr3 = []
@@ -121,6 +143,7 @@ outptLyr4 = []
 nn = []
 
 nnBestAction mem =
+  -- XXX: Main neural netowrk linking layers will be implemented here
   "0"
 -- ##
 
