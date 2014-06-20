@@ -10,6 +10,7 @@ import System.Posix.Files
 import System.Posix.IO
 import System.Random
 import qualified Data.Array.Repa as R
+import qualified Data.Array.Repa.Shape as RS
 import qualified Data.Array.Repa.Algorithms.Randomish as RR
 import qualified Data.Array.Repa.Algorithms.Matrix as RM
 import qualified Data.Array.Repa.Repr.Unboxed as RU
@@ -19,6 +20,9 @@ import qualified Data.ByteString.Char8 as C
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 import qualified Text.Parsec.Token as PT
+
+-- Running List of possible implemetation incorrectness
+  -- 4D tensor construvtion from flat list could give wrongly indexed data
 
 memSz = 10000 -- Comes out to ~1.3005 GB of memory 
 aleScrnSz = (160, 210)
@@ -113,27 +117,39 @@ cnvLyr1 input =
       convOutpt = 0.0 -- XXX
   in []
 
-convolve img imdDim fltr flrDim strd = 
+convolve img imgDim fltr fltrDim strd ftrMapDim = 
   -- Neural network convolution
   -- both inputs are 4d tensors, second dimension must match
-  let bRange = [1..(imdDim!!0)]
+  -- Params:
+  -- imgDim 4tuple - (batchSize, numFeatureMaps, numRows, numCols)
+  -- fltrDim 4tuple - (fltBatchSize, numFeatureMaps, numRows, numCols)
+  -- convenice value - equal 1 + (imgRows- fltRows) strd
+  -- Output: Delayed 4D tensor
+  let bRange = [1..(imgDim!!0)]
       kRange = [1..(fltrDim!!0)]
-      combRange = [(b,k) | b <- bRange, y <- kRange] 
+      combRange = [(b,k) | b <- bRange, k <- kRange] 
       mapHelper (b,k) = 
         -- Takes the Image batchSize index and the filter batchSize index
         -- returns a 2d matrix as the resul of convolving using stride strd
         -- img[b, i, : , :] with fltr[k, i, :, :] for all i, and summing over i
-        let iRange = [1..(imdDim!!1)]
-            iResults = map conv2D [(R.slice img (R.Z R.:. (b :: Int) R.:. (i :: Int) R.:. R.All R.:. R.All) R.DIM2 R.Double, R.slice fltr (R.Z R.:. (k :: Int) R.:. (i :: Int) R.:. R.All R.:. R.All) R.DIM2 R.Double, strd) | i <- iRangeR]
-            2DRes = foldl (R.+^) (head iResults) (tail iResults) in 
-        -- XXX possibly we might need a computeUnboxedP here before reutrn
-        2DRes
-      2DResAllbk = map mapHelper combRange
-      -- XXX pickup here, 2DResAllbk is a list of 2d matricies, we need to flatten all the lists, join them in the correct order, and then reshape to the corretly dimension 4d tensor
+        let iRange = [1..(imgDim!!1)]
+            iResults = map conv2D [((R.slice img (R.Z R.:. (b :: Int) R.:. (i :: Int) R.:. R.All R.:. R.All)), (R.slice fltr (R.Z R.:. (k :: Int) R.:. (i :: Int) R.:. R.All R.:. R.All)), strd) | i <- iRange] 
+        in (foldl (R.+^) (head iResults) (tail iResults)) 
+      res2DAllbk = map mapHelper combRange
+      -- res2DAllbk is a list of 2d matricies, we need to flatten all the lists, join them in the correct order, and then reshape to the corretly dimension 4d tensor
+      fltn e =
+        -- Takes a matirx and flattens it to a list
+        let dim = product (RS.listOfShape (R.extent e)) 
+        in R.reshape (R.Z R.:. dim) e
+      res2DFltnd = map fltn res2DAllbk
+      -- All of the data for the 4D tensor in a flat 1d array
+      tnsr4DDataFlt = foldl (R.append) (head res2DFltnd) (tail res2DFltnd) 
+  in R.reshape (R.Z R.:. (imgDim!!0) R.:. (fltrDim!!0) R.:. ftrMapDim R.:. ftrMapDim) tnsr4DDataFlt
 
-conv2D (img, fltr, strd)
+
+conv2D (img, fltr, strd) = 
   -- vanilla 2d convultion with stride strd
-  -- XXX: copy the repa convovle code and alter to work with stride
+  -- XXX: convolve with repa vanilla function, and then drop elements to satisfy stride strd
   []
 
 cnvLyr2 = []
