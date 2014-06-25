@@ -10,6 +10,7 @@ import System.Process
 import System.Posix.Files
 import System.Posix.IO
 import System.Random
+import Debug.Trace
 import qualified Data.Array.Repa as R
 import qualified Data.Array.Repa.Shape as RS
 import qualified Data.Array.Repa.Unsafe as RUS
@@ -63,7 +64,7 @@ main =
     str <- C.hGetLine hndl_in
     --putStrLn str
     -- first action must be 1 to satrt game
-    fdWrite toA "1,18\n"
+    trace "error!" $ fdWrite toA "1,18\n"
 
     foreverPrint hndl_in toA V.empty 0 0
 -- ##
@@ -74,9 +75,9 @@ foreverPrint hndl_in fout mem l i =
  do str <- C.hGetLine hndl_in
     --if (i > 1) then putStrLn (show (VU.foldl (+) 0.0 (V.foldl (VU.++) VU.empty mem))) else putStrLn "Mem too small"
     --let h = map (map (\x -> x + 1.0)) mem
-    let strTkns = C.split ':' str
+    let strTkns = trace "error!" $ C.split ':' str
     let (scrStr, epInfo) = (strTkns!!0, strTkns!!1)
-    act <- (chooseAction mem i)
+    act <-  (length strTkns) `seq` (chooseAction mem i)
     fdWrite fout (act ++ ",18\n")
     let smallScr = scrnToNnInp scrStr
     putStrLn (show i)
@@ -242,7 +243,9 @@ conv2D (img, fltr, strd)
   -- vanilla 2d convultion with stride strd - very hackish fuction
   -- XXX: convolve with repa vanilla function, and then drop elements to satisfy stride strd
   -- Use two conditions one for stride 4 and one for stride 2 since these are the only two conditions this function will be used for
-  -- | strd == 2 = error "Not implemented" 
+  -- Strd 2 case 20 by 20 image convovled with 4 by 4 gives 9 by 9
+  | strd == 2 = let got = (convolveOutP outClamp (R.computeUnboxedS fltr) (R.computeUnboxedS img))
+                in ((R.traverse got (\_-> (R.Z R.:. (9:: Int) R.:. (9:: Int))) (\f (R.Z R.:. i R.:. j) -> f (R.Z R.:. (2 * i + 2) R.:. (2 * j + 2)))))
   -- Strd 4 case, 84 by 84 image convovled with 8 by 8 gives 20 by 20
   | strd == 4 = let got = (convolveOutP outClamp (R.computeUnboxedS fltr) (R.computeUnboxedS img))
                 in ((R.traverse got (\_-> (R.Z R.:. (20:: Int) R.:. (20:: Int))) (\f (R.Z R.:. i R.:. j) -> f (R.Z R.:. (4 * i + 4) R.:. (4 * j + 4)))))
@@ -269,7 +272,7 @@ scrnToNnInp scr =
   crpHxLs `seq` let colDropNnHxLs = map head (chunksOf 2 crpHxLs) in
   colDropNnHxLs `seq` let rowDropNnHxLs = foldl (++) [] (map head (chunksOf 2 (chunksOf 80 colDropNnHxLs))) in
   -- XXX Pad with blank pixels from 80,80 to 84,84
-
+  let rowDropNnHxLs = rowDropNnHxLs ++ ["00" | x <- [1..(84*84 - 80*80)]] in
   -- Convert to Grayscale
   rowDropNnHxLs `seq` let grayImg = VUN.fromList [magicArray R.! (R.Z R.:. ((hTD (hex!!1))::Int) R.:. ((hTD  (hex!!0))::Int)) | hex <- rowDropNnHxLs] in
   rowDropNnHxLs `seq` grayImg
