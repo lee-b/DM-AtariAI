@@ -10,7 +10,7 @@ Arcade Learning Environment (ALE) interface written in hasekll A strict implemen
 
 ##Running
 
-ghc -O2 -prof -auto-all ale_interface.hs
+'''ghc -O2 -prof -auto-all ale_interface.hs'''
 
 '''./ale_interface'''
 
