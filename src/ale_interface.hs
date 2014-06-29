@@ -130,7 +130,7 @@ chooseAction mem frmsPlyd = do
     g <- newStdGen
     if epsilon < rndRl 
       then return (availActns!!rndIdx) 
-      else return (nnBestActionDebug mem)
+      else return (nnBestAction mem)
 -- ##
 
 -- ## Neural Net
@@ -167,6 +167,11 @@ nnBestActionDebug
   :: V.Vector (VUN.Vector Double)
   -> [Char]
 
+
+-- SEGFAULT DEBUGGING
+-- Things noticed
+-- Sometimes when a layer is ran in isolation it skips its print statements but the print of the frame number in the main loop still works
+
 nnBestActionDebug mem =
   -- A version of the nnBestAction function designed to run each layer in isolation to debug the segfault
   if V.length mem < 4 then 
@@ -181,26 +186,28 @@ nnBestActionDebug mem =
 
         -- Lyr 1 res gives us a 4d tensor, to evalutate it in isolation we use depSeqArray tied to the output character literal
 
-        -- SEGFAULT conclusion: NO, no Segfault with isolated use and on the spot constructed input
-        -- lyr1Res = cnvLyr1 $ R.delay (RU.fromListUnboxed (R.Z R.:. (1::Int) R.:. (4::Int) R.:. (84::Int) R.:. (84::Int)) [1..(4 * 84 * 84)])
+        -- SEGFAULT conclusion: YES, Segfaults with isolated use and on tens input
+        --lyr1Res = cnvLyr1 $ R.delay (RU.fromListUnboxed (R.Z R.:. (1::Int) R.:. (4::Int) R.:. (84::Int) R.:. (84::Int)) [1..(4 * 84 * 84)])
+        -- lyr1Res = cnvLyr1 tens
 
         -- Lyr 2 res gives us a 2d matrix, to evalutate it in isolation we use depSeqArray tied to the output character literal
 
         -- SEGFAULT conclusion: YES, Segfaults with isolated use and on the spot constructed input
-        lyr2Res = cnvLyr2 $ R.delay (RU.fromListUnboxed (R.Z R.:. (1::Int) R.:. (16::Int) R.:. (20::Int) R.:. (20::Int)) [1..(16 * 20 * 20)])
+        --lyr2Res = cnvLyr2 $ R.delay (RU.fromListUnboxed (R.Z R.:. (1::Int) R.:. (16::Int) R.:. (20::Int) R.:. (20::Int)) [1..(16 * 20 * 20)])
 
         -- Lyr 3 res gives us a 2d matrix, to evalutate it in isolation we use depSeqArray tied to the output character literal
 
         -- SEGFAULT conclusion: NO, no Segfault with isolated use and on the spot constructed input
-        -- lyr3Res = cnctdLyr3 $ R.delay (RU.fromListUnboxed (R.Z R.:. (1::Int) R.:. (2592::Int)) [1..2592])
+        --lyr3Res = cnctdLyr3 $ R.delay (RU.fromListUnboxed (R.Z R.:. (1::Int) R.:. (2592::Int)) [1..2592])
 
         -- Lyr 4 res gives us an unboxed vector
 
         -- SEGFAULT conclusion: NO, no Segfault with isolated use and on the spot constructed input
         -- lyr4Res = outptLyr4 $ R.delay (RU.fromListUnboxed (R.Z R.:. (1::Int) R.:. (256::Int)) [1..256])
 
-    in R.deepSeqArray lyr1Res "1"
+    -- in (R.deepSeqArray lyr1Res "1") `debug`((show $ R.extent lyr1Res) ++ (show $ R.extent tens)) 
     -- in seq (VUN.length lyr4Res) "1"
+    in "1" `debug` show (R.sumAllS tens)
 
   -- ##
 
@@ -221,7 +228,9 @@ cnvLyr1 input =
       -- number of input connections per neuron
       numOutPer =  ((numFltrs * ftrMpDim!!0 * ftrMpDim!!1) :: Int)
       wBnd = sqrt (6.0 / (fromIntegral (numInpPer + numOutPer)))
-      w = RR.randomishDoubleArray (R.Z R.:. (numFltrs::Int) R.:. ((fltrDim!!0)::Int) R.:. ((fltrDim!!1)::Int) R.:. ((fltrDim!!2)::Int)) (-wBnd) wBnd 1 
+      --XXX enable w random
+      --w = RR.randomishDoubleArray (R.Z R.:. (numFltrs::Int) R.:. ((fltrDim!!0)::Int) R.:. ((fltrDim!!1)::Int) R.:. ((fltrDim!!2)::Int)) (-wBnd) wBnd 1 
+      w =  RU.fromListUnboxed (R.Z R.:. (numFltrs::Int) R.:. ((fltrDim!!0)::Int) R.:. ((fltrDim!!1)::Int) R.:. ((fltrDim!!2)::Int)) [0.01 | _ <- [1..(16 * 8 * 8 * 4)]]
       -- XXX on Neural Netowkr update b should be a list of numFltrs value each replicated ftrMapSd * ftrMpSd times
       b = [0 | _ <- [1..numFltrs * ftrMpSd * ftrMpSd]]
       b_tens = RU.fromListUnboxed (R.Z R.:. (1::Int) R.:. (numFltrs::Int) R.:. (ftrMpSd::Int) R.:. (ftrMpSd::Int)) b
@@ -253,7 +262,9 @@ cnvLyr2 input =
       -- number of input connections per neuron
       numOutPer =  (numFltrs * ftrMpDim!!0 * ftrMpDim!!1) :: Int
       wBnd = sqrt (6.0 / (fromIntegral (numInpPer + numOutPer)))
-      w = RR.randomishDoubleArray (R.Z R.:. (numFltrs::Int) R.:. ((fltrDim!!0)::Int) R.:. ((fltrDim!!1)::Int) R.:. ((fltrDim!!2)::Int)) (-wBnd) wBnd 1
+      --XXX enable w random
+      --w = RR.randomishDoubleArray (R.Z R.:. (numFltrs::Int) R.:. ((fltrDim!!0)::Int) R.:. ((fltrDim!!1)::Int) R.:. ((fltrDim!!2)::Int)) (-wBnd) wBnd 1
+      w =  RU.fromListUnboxed (R.Z R.:. (numFltrs::Int) R.:. ((fltrDim!!0)::Int) R.:. ((fltrDim!!1)::Int) R.:. ((fltrDim!!2)::Int)) [0.01 | _ <- [1..(32 * 16 * 4 * 4)]]
       b = [0 | _ <- [1..numFltrs * ftrMpSd * ftrMpSd]]
       b_tens = RU.fromListUnboxed  (R.Z R.:. (1::Int) R.:. (numFltrs::Int) R.:. (ftrMpSd::Int) R.:. (ftrMpSd::Int)) b
       convOutpt = convolve input (1:inpImgDim) (R.delay w) (numFltrs:fltrDim) strd ftrMpSd
@@ -330,7 +341,7 @@ convolve img imgDim fltr fltrDim strd ftrMpSd =
         -- returns a 2d matrix as the resul of convolving using stride strd
         -- img[b, i, : , :] with fltr[k, i, :, :] for all i, and summing over i
         let iRange = [1..(imgDim!!1)]
-            iResults = map conv2D [((R.slice img (R.Z R.:. (b :: Int) R.:. (i :: Int) R.:. R.All R.:. R.All)), (R.slice fltr (R.Z R.:. (k :: Int) R.:. (i :: Int) R.:. R.All R.:. R.All)), strd) | i <- iRange] 
+            iResults = map conv2DDebug [((R.slice img (R.Z R.:. (b :: Int) R.:. (i :: Int) R.:. R.All R.:. R.All)), (R.slice fltr (R.Z R.:. (k :: Int) R.:. (i :: Int) R.:. R.All R.:. R.All)), strd) | i <- iRange] 
         in R.computeUnboxedS (foldl (R.+^) (head iResults) (tail iResults)) 
       res2DAllbk = map mapHelper combRange
       -- res2DAllbk is a list of 2d matricies, we need to flatten all the lists, join them in the correct order, and then reshape to the corretly dimension 4d tensor
@@ -356,11 +367,35 @@ conv2D (img, fltr, strd)
   -- XXX: convolve with repa vanilla function, and then drop elements to satisfy stride strd
   -- Use two conditions one for stride 4 and one for stride 2 since these are the only two conditions this function will be used for
   -- Strd 2 case 20 by 20 image convovled with 4 by 4 gives 9 by 9
-  | strd == 2 = let got = (convolveOutP outClamp (R.computeUnboxedS fltr) (R.computeUnboxedS img))
+  | strd == 2 = let got = (convolveOutPDebug outClamp (R.computeUnboxedS fltr) (R.computeUnboxedS img))
                 in ((R.traverse got (\_-> (R.Z R.:. (9:: Int) R.:. (9:: Int))) (\f (R.Z R.:. i R.:. j) -> f (R.Z R.:. (2 * i + 2) R.:. (2 * j + 2)))))
   -- Strd 4 case, 84 by 84 image convovled with 8 by 8 gives 20 by 20
-  | strd == 4 = let got = (convolveOutP outClamp (R.computeUnboxedS fltr) (R.computeUnboxedS img))
+  | strd == 4 = let got = (convolveOutPDebug outClamp (R.computeUnboxedS fltr) (R.computeUnboxedS img))
                 in ((R.traverse got (\_-> (R.Z R.:. (20:: Int) R.:. (20:: Int))) (\f (R.Z R.:. i R.:. j) -> f (R.Z R.:. (4 * i + 4) R.:. (4 * j + 4)))))
+  -- | otherwise = error ("Stride size nt supported sorry!: stride " ++ show(strd))
+
+
+conv2DDebug
+  -- :: (Num a, RU.Unbox a)
+  :: (RU.Array R.D RI.DIM2 Double, RU.Array R.D RI.DIM2 Double, Int)
+  -> RU.Array R.D RI.DIM2 Double
+
+conv2DDebug (img, fltr, strd)
+  -- vanilla 2d convultion with stride strd - very hackish fuction
+  -- XXX: convolve with repa vanilla function, and then drop elements to satisfy stride strd
+  -- Use two conditions one for stride 4 and one for stride 2 since these are the only two conditions this function will be used for
+  -- Strd 2 case 20 by 20 image convovled with 4 by 4 gives 9 by 9
+  | strd == 2 = let got  = R.delay $ RU.fromListUnboxed (R.Z R.:. (9::Int) R.:. (9::Int)) [1..(9*9)]
+                --let got2 = R.delay $ (convolveOutPDebug outClamp (R.computeUnboxedS fltr) (R.computeUnboxedS img))
+                --in (R.computeUnboxedS fltr) `R.deepSeqArray` got -- got2 `R.deepSeqArray` got
+                --in ((R.traverse got (\_-> (R.Z R.:. (9:: Int) R.:. (9:: Int))) (\f (R.Z R.:. i R.:. j) -> f (R.Z R.:. (2 * i + 2) R.:. (2 * j + 2)))))
+                in got
+  -- Strd 4 case, 84 by 84 image convovled with 8 by 8 gives 20 by 20
+  | strd == 4 = let got  = R.delay $ RU.fromListUnboxed (R.Z R.:. (20::Int) R.:. (20::Int)) [1..(20*20)]
+                --let got2 = R.delay $ (convolveOutPDebug outClamp (R.computeUnboxedS fltr) (R.computeUnboxedS img))
+                --in (R.computeUnboxedS fltr) `R.deepSeqArray` got --got2 `R.deepSeqArray` got
+                --in ((R.traverse got (\_-> (R.Z R.:. (20:: Int) R.:. (20:: Int))) (\f (R.Z R.:. i R.:. j) -> f (R.Z R.:. (4 * i + 4) R.:. (4 * j + 4)))))
+                in got
   -- | otherwise = error ("Stride size nt supported sorry!: stride " ++ show(strd))
 
 
@@ -476,3 +511,18 @@ convolveOutP getOut kernel image
                  in integrate (count + 1) (acc + here)
 
            in integrate 0 0
+
+
+---- | Image-kernel convolution, 
+----   which takes a function specifying what value to use for out-of-range elements.
+convolveOutPDebug
+  -- :: (Num a, RU.Unbox a)
+  :: GetOut Double   -- ^ How to handle out-of-range elements.
+  -> RU.Array RU.U RI.DIM2 Double -- ^ Stencil to use in the convolution.
+  -> RU.Array RU.U RI.DIM2 Double -- ^ Input image.
+  -> RU.Array RU.U RI.DIM2 Double
+
+ -- Variant to debug segfault
+convolveOutPDebug getOut kernel image
+  | R.extent image == (R.Z R.:. (84::Int) R.:. (84::Int))   = RU.fromListUnboxed (R.Z R.:. (84::Int) R.:. (84::Int)) [1..(84*84)]
+  | R.extent image == (R.Z R.:. (20::Int) R.:. (20::Int))   = RU.fromListUnboxed (R.Z R.:. (20::Int) R.:. (20::Int)) [1..(20*20)]
