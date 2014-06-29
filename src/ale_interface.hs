@@ -130,7 +130,7 @@ chooseAction mem frmsPlyd = do
     g <- newStdGen
     if epsilon < rndRl 
       then return (availActns!!rndIdx) 
-      else return (nnBestAction mem)
+      else return (nnBestActionDebug mem)
 -- ##
 
 -- ## Neural Net
@@ -160,34 +160,78 @@ nnBestAction mem =
     --in "0" `strct` actnProb
   -- ##
 
+
+nnBestActionDebug
+  -- :: (Num a, RU.Unbox a)
+  -- => 
+  :: V.Vector (VUN.Vector Double)
+  -> [Char]
+
+nnBestActionDebug mem =
+  -- A version of the nnBestAction function designed to run each layer in isolation to debug the segfault
+  if V.length mem < 4 then 
+      "0"
+  else
+    let rcnt4 = (V.take 4 mem) `strct` mem
+        rcnt = (V.foldl (VUN.++) (V.head rcnt4) (V.tail rcnt4)) `strct` rcnt4 
+        tens = (R.delay (R.fromUnboxed (R.Z R.:. (1 :: Int) R.:. (4 :: Int) R.:. (84 :: Int) R.:. (84 :: Int)) rcnt)) `strct` rcnt
+        -- Send input to first layer and propogate through to output layer
+
+        -- ## SEGFAULT DEBUGGING atleast one of these layers causes a segfault
+
+        -- Lyr 1 res gives us a 4d tensor, to evalutate it in isolation we use depSeqArray tied to the output character literal
+
+        -- SEGFAULT conclusion: NO, no Segfault with isolated use and on the spot constructed input
+        -- lyr1Res = cnvLyr1 $ R.delay (RU.fromListUnboxed (R.Z R.:. (1::Int) R.:. (4::Int) R.:. (84::Int) R.:. (84::Int)) [1..(4 * 84 * 84)])
+
+        -- Lyr 2 res gives us a 2d matrix, to evalutate it in isolation we use depSeqArray tied to the output character literal
+
+        -- SEGFAULT conclusion: YES, Segfaults with isolated use and on the spot constructed input
+        lyr2Res = cnvLyr2 $ R.delay (RU.fromListUnboxed (R.Z R.:. (1::Int) R.:. (16::Int) R.:. (20::Int) R.:. (20::Int)) [1..(16 * 20 * 20)])
+
+        -- Lyr 3 res gives us a 2d matrix, to evalutate it in isolation we use depSeqArray tied to the output character literal
+
+        -- SEGFAULT conclusion: NO, no Segfault with isolated use and on the spot constructed input
+        -- lyr3Res = cnctdLyr3 $ R.delay (RU.fromListUnboxed (R.Z R.:. (1::Int) R.:. (2592::Int)) [1..2592])
+
+        -- Lyr 4 res gives us an unboxed vector
+
+        -- SEGFAULT conclusion: NO, no Segfault with isolated use and on the spot constructed input
+        -- lyr4Res = outptLyr4 $ R.delay (RU.fromListUnboxed (R.Z R.:. (1::Int) R.:. (256::Int)) [1..256])
+
+    in R.deepSeqArray lyr1Res "1"
+    -- in seq (VUN.length lyr4Res) "1"
+
+  -- ##
+
 cnvLyr1 input =
   -- XXX input validation
   -- input has extent 1, 4, 84, 84
   let asrt = (assert_eq (R.extent input) (R.Z R.:. (1::Int) R.:. (4::Int) R.:. (84::Int) R.:. (84::Int)) "ly1 input") `strct` input `debug` "lyr1 inp assrt"
-      inpImgDim = [4 :: Int, 84 :: Int, 84 :: Int] `strct` asrt `debug` "inpImgDim" `debug` ("assrt" ++ show(asrt))
-      numFltrs = (16 :: Int) `strct` inpImgDim `debug` "numFltrs"
-      fltrDim = [4 :: Int, 8 :: Int, 8 :: Int] `strct` numFltrs `debug` "fltrDim"
-      strd = (4 :: Int) `strct` fltrDim `debug` "strd"
+      inpImgDim = [4 :: Int, 84 :: Int, 84 :: Int] `strct` asrt
+      numFltrs = (16 :: Int)
+      fltrDim = [4 :: Int, 8 :: Int, 8 :: Int]
+      strd = (4 :: Int)
       -- number of input connections per neuron
-      numInpPer =  ((fltrDim!!0 * fltrDim!!1 * fltrDim!!2) :: Int) `strct` strd `debug` "numInpPer"
+      numInpPer =  ((fltrDim!!0 * fltrDim!!1 * fltrDim!!2) :: Int)
       -- Feature map dimensions
       --ftrMpSd = (1 + (round ((fromIntegral (inpImgDim!!1 - fltrDim!!1)) / strd)) :: Int) `strct` numInpPer `debug` "ftrMpSd"
-      ftrMpSd = ((1 + quot (inpImgDim!!1 - fltrDim!!1) strd) :: Int) `strct` numInpPer `debug` "ftrMpSd"
-      ftrMpDim = [ftrMpSd, ftrMpSd] `strct` ftrMpSd `debug` "ftrMpDim"
+      ftrMpSd = ((1 + quot (inpImgDim!!1 - fltrDim!!1) strd) :: Int)
+      ftrMpDim = [ftrMpSd, ftrMpSd]
       -- number of input connections per neuron
-      numOutPer =  ((numFltrs * ftrMpDim!!0 * ftrMpDim!!1) :: Int) `strct` ftrMpDim `debug` "numOutPer"
-      wBnd = sqrt (6.0 / (fromIntegral (numInpPer + numOutPer))) `debug` "wBnd"
-      w = RR.randomishDoubleArray (R.Z R.:. (numFltrs::Int) R.:. ((fltrDim!!0)::Int) R.:. ((fltrDim!!1)::Int) R.:. ((fltrDim!!2)::Int)) (-wBnd) wBnd 1 `debug` "w"
+      numOutPer =  ((numFltrs * ftrMpDim!!0 * ftrMpDim!!1) :: Int)
+      wBnd = sqrt (6.0 / (fromIntegral (numInpPer + numOutPer)))
+      w = RR.randomishDoubleArray (R.Z R.:. (numFltrs::Int) R.:. ((fltrDim!!0)::Int) R.:. ((fltrDim!!1)::Int) R.:. ((fltrDim!!2)::Int)) (-wBnd) wBnd 1 
       -- XXX on Neural Netowkr update b should be a list of numFltrs value each replicated ftrMapSd * ftrMpSd times
-      b = [0 | _ <- [1..numFltrs * ftrMpSd * ftrMpSd]] `debug` "b"
-      b_tens = RU.fromListUnboxed (R.Z R.:. (1::Int) R.:. (numFltrs::Int) R.:. (ftrMpSd::Int) R.:. (ftrMpSd::Int)) b `debug` "b_tens"
-      convOutpt = convolve input (1:inpImgDim) (R.delay w) (numFltrs:fltrDim) strd ftrMpSd `debug` "convOutpt"
-      asrt_co = (assert_eq (R.extent convOutpt) (R.Z R.:. (1::Int) R.:. (16::Int) R.:. (20::Int) R.:. (20::Int)) "ly1 convOutpt") `debug` "asrt_co"
+      b = [0 | _ <- [1..numFltrs * ftrMpSd * ftrMpSd]]
+      b_tens = RU.fromListUnboxed (R.Z R.:. (1::Int) R.:. (numFltrs::Int) R.:. (ftrMpSd::Int) R.:. (ftrMpSd::Int)) b
+      convOutpt = convolve input (1:inpImgDim) (R.delay w) (numFltrs:fltrDim) strd ftrMpSd 
+      asrt_co = (assert_eq (R.extent convOutpt) (R.Z R.:. (1::Int) R.:. (16::Int) R.:. (20::Int) R.:. (20::Int)) "ly1 convOutpt")
       thresh = (0.0 :: Double) `strct` asrt_co
       actvtn =  (R.+^) convOutpt b_tens `debug` "actvtn"
-      asrt_actv = (assert_eq (R.extent actvtn) (R.Z R.:. (1::Int) R.:. (16::Int) R.:. (20::Int) R.:. (20::Int)) "ly1 actvtn") `debug` "asrt_actv"
-      abvThresh = (R.map (\e -> if e > thresh then (e - thresh) else 0) actvtn) `strct` asrt_actv `debug` "abvThresh"
-      outP = abvThresh`debug` "outP"
+      asrt_actv = (assert_eq (R.extent actvtn) (R.Z R.:. (1::Int) R.:. (16::Int) R.:. (20::Int) R.:. (20::Int)) "ly1 actvtn")
+      abvThresh = (R.map (\e -> if e > thresh then (e - thresh) else 0) actvtn) `strct` asrt_actv
+      outP = abvThresh
       asrt_o = (assert_eq (R.extent outP) (R.Z R.:. (1::Int) R.:. (16::Int) R.:. (20::Int) R.:. (20::Int)) "ly1 outP") --`debug` "asrt_o"
       -- XXX: Validate extent outP is (1, 16, 20, 20)
   in outP `strct` asrt_o `debug` ("lyr1 out assrt" ++ show(asrt_o))
