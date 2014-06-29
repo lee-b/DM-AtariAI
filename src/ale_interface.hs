@@ -2,10 +2,8 @@
 -- {-# LANGUAGE BangPatterns, PackageImports #-}
 -- {-# OPTIONS -Wall -fno-warn-missing-signatures -fno-warn-incomplete-patterns #-}
 module Main where
-import Control.Concurrent
 import Data.List.Split
 import System.Directory
-import System.IO
 import System.Process
 import System.Posix.Files
 import System.Posix.IO
@@ -13,23 +11,31 @@ import System.Random
 import Debug.Trace
 import qualified Data.Array.Repa as R
 import qualified Data.Array.Repa.Shape as RS
-import qualified Data.Array.Repa.Unsafe as RUS
 import qualified Data.Array.Repa.Algorithms.Randomish as RR
 import qualified Data.Array.Repa.Algorithms.Matrix as RM
-import qualified Data.Array.Repa.Algorithms.Convolve as RC
 import qualified Data.Array.Repa.Repr.Unboxed as RU
 import qualified Data.Array.Repa.Index as RI
-import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VUN
-import qualified Text.Parsec.Token as PT
 
 -- Running List of possible implemetation incorrectness
   -- 4D tensor construvtion from flat list could give wrongly indexed data
 
 memSz = 10000 -- Comes out to ~1.3005 GB of memory 
 aleScrnSz = (160, 210)
+
+-- ## Utils
+debug = flip trace
+-- use: variable `debug` "at variable"
+strct = flip seq
+
+assert_eq :: (Eq a, Show a) => a -> a -> [Char] -> Bool
+assert_eq x y mrkrMsg =
+  let c = if x == y then True  else (error (mrkrMsg ++ show x ++ show y ++ "are not equal!"))
+  in c `strct` c
+-- ##
+
 
 -- ## ALE INTERFACE 
 main = 
@@ -64,7 +70,7 @@ main =
     str <- C.hGetLine hndl_in
     --putStrLn str
     -- first action must be 1 to satrt game
-    trace "error!" $ fdWrite toA "1,18\n"
+    fdWrite toA "1,18\n"
 
     foreverPrint hndl_in toA V.empty 0 0
 -- ##
@@ -75,15 +81,41 @@ foreverPrint hndl_in fout mem l i =
  do str <- C.hGetLine hndl_in
     --if (i > 1) then putStrLn (show (VU.foldl (+) 0.0 (V.foldl (VU.++) VU.empty mem))) else putStrLn "Mem too small"
     --let h = map (map (\x -> x + 1.0)) mem
-    let strTkns = trace "error!" $ C.split ':' str
+    let strTkns = C.split ':' str
     let (scrStr, epInfo) = (strTkns!!0, strTkns!!1)
-    act <-  (length strTkns) `seq` (chooseAction mem i)
+    act <- (chooseAction mem i) `strct` strTkns
     fdWrite fout (act ++ ",18\n")
     let smallScr = scrnToNnInp scrStr
+    --let smallScr = VUN.fromList [1,2,3]
     putStrLn (show i)
-    case (l >= memSz) of  
-      True ->  foreverPrint hndl_in fout (smallScr `V.cons` (V.init mem)) l (i + 1)
-      False -> foreverPrint hndl_in fout (smallScr `V.cons` mem) (l + 1) (i + 1)
+    putStrLn act
+    putStrLn ((C.unpack $ C.take 10 scrStr) ++ "... of length: " ++ (show $ C.length scrStr))
+    if l >= memSz then
+      foreverPrint hndl_in fout (smallScr `V.cons` (V.init mem)) l (i + 1)
+    else 
+      foreverPrint hndl_in fout (smallScr `V.cons` mem) (l + 1) (i + 1)
+
+scrnToNnInp scr = 
+  -- Takes a raw uncroped screen string from ale and makes the full 
+  -- transformation into an input ready for the neural network
+  -- Param:
+    -- scr screen string
+  -- Result:
+    -- scr screen as list of doubles
+
+  -- Make hex list from string
+  let hxLs = chunksOf 2 (C.unpack scr)
+  -- Crop 33 rows off of Top and 17 rows off of bottom
+      crpHxLs = drop (33 * 160) (take (193 * 160) hxLs)
+  -- Downsize to nnImgSz: 80,by 80, XXX: Better Resize
+      colDropNnHxLs = map head (chunksOf 2 crpHxLs)
+      rowDropNnHxLs = foldl (++) [] (map head (chunksOf 2 (chunksOf 80 colDropNnHxLs)))
+  -- XXX Pad with blank pixels from 80,80 to 84,84
+      rowDropNnHxLsPded = rowDropNnHxLs ++ ["00" | x <- [1..(84*84 - 80*80)]]
+  -- Convert to Grayscale
+      grayImg = VUN.fromList [magicArray R.! (R.Z R.:. ((hTD (hex!!1))::Int) R.:. ((hTD  (hex!!0))::Int)) | hex <- rowDropNnHxLsPded]
+  in grayImg
+
 
 -- Actions available to the AI in the game being played
 availActns = ["0","1","3","4"] -- space invaders
@@ -92,11 +124,13 @@ chooseAction mem frmsPlyd = do
     -- Random number generator
     g <- getStdGen
     let epsilon = max ((0.9 :: Float) - ((fromIntegral frmsPlyd) / 1000000.0)) 0.1
-    let (rndRl,gN)  = randomR (0.0, 1.0) g
+    let (rndRl,gN) = randomR (0.0, 1.0) g
     g <- newStdGen
     let (rndIdx,gN)  = randomR (0, (length availActns) - 1) g
     g <- newStdGen
-    if epsilon < rndRl then return (availActns!!rndIdx) else return (nnBestAction mem)
+    if epsilon < rndRl 
+      then return (availActns!!rndIdx) 
+      else return (nnBestAction mem)
 -- ##
 
 -- ## Neural Net
@@ -112,85 +146,117 @@ nnBestAction
 
 nnBestAction mem =
   -- XXX: Main neural netowrk linking layers will be implemented here
-
       -- Stitch last 4 images together into 4D tensor
-  let rcnt4 = (V.take 4 mem)
-      rcnt4cons = V.foldl (VUN.++) (V.head rcnt4) (V.tail rcnt4)
-      tens = R.delay (R.fromUnboxed (R.Z R.:. (1 :: Int) R.:. (4 :: Int) R.:. (84 :: Int) R.:. (84 :: Int)) rcnt4cons)
-      -- Send input to first layer and propogate through to output layer
-      actnProb = outptLyr4 (cnctdLyr3 (cnvLyr2 (cnvLyr1 tens)))
-     -- Get the most probable action
-  in availActns!!(VUN.maxIndex actnProb)
--- ##
+  if V.length mem < 4 then 
+      "0"
+  else
+    let rcnt4 = (V.take 4 mem) `strct` mem
+        rcnt = (V.foldl (VUN.++) (V.head rcnt4) (V.tail rcnt4)) `strct` rcnt4 
+        tens = (R.delay (R.fromUnboxed (R.Z R.:. (1 :: Int) R.:. (4 :: Int) R.:. (84 :: Int) R.:. (84 :: Int)) rcnt)) `strct` rcnt
+        -- Send input to first layer and propogate through to output layer
+        actnProb = (outptLyr4 (cnctdLyr3 (cnvLyr2 (cnvLyr1 tens)))) `strct` tens
+    -- Get the most probable action
+    in availActns!!(VUN.maxIndex actnProb) `strct` actnProb
+    --in "0" `strct` actnProb
+  -- ##
 
 cnvLyr1 input =
-  let inpImgDim = [4 :: Int, 84 :: Int, 84 :: Int]
-      numFltrs = (16 :: Int)
-      fltrDim = [4 :: Int, 8 :: Int, 8 :: Int]
-      strd = 4 :: Int
+  -- XXX input validation
+  -- input has extent 1, 4, 84, 84
+  let asrt = (assert_eq (R.extent input) (R.Z R.:. (1::Int) R.:. (4::Int) R.:. (84::Int) R.:. (84::Int)) "ly1 input") `strct` input `debug` "lyr1 inp assrt"
+      inpImgDim = [4 :: Int, 84 :: Int, 84 :: Int] `strct` asrt `debug` "inpImgDim" `debug` ("assrt" ++ show(asrt))
+      numFltrs = (16 :: Int) `strct` inpImgDim `debug` "numFltrs"
+      fltrDim = [4 :: Int, 8 :: Int, 8 :: Int] `strct` numFltrs `debug` "fltrDim"
+      strd = (4 :: Int) `strct` fltrDim `debug` "strd"
       -- number of input connections per neuron
-      numInpPer =  (fltrDim!!0 * fltrDim!!1 * fltrDim!!2) :: Int
+      numInpPer =  ((fltrDim!!0 * fltrDim!!1 * fltrDim!!2) :: Int) `strct` strd `debug` "numInpPer"
       -- Feature map dimensions
-      ftrMpSd = 1 + (round ((fromIntegral (inpImgDim!!1 - fltrDim!!1)) / 4.0)) :: Int
-      ftrMpDim = [ftrMpSd, ftrMpSd]
+      --ftrMpSd = (1 + (round ((fromIntegral (inpImgDim!!1 - fltrDim!!1)) / strd)) :: Int) `strct` numInpPer `debug` "ftrMpSd"
+      ftrMpSd = ((1 + quot (inpImgDim!!1 - fltrDim!!1) strd) :: Int) `strct` numInpPer `debug` "ftrMpSd"
+      ftrMpDim = [ftrMpSd, ftrMpSd] `strct` ftrMpSd `debug` "ftrMpDim"
       -- number of input connections per neuron
-      numOutPer =  (numFltrs * ftrMpDim!!0 * ftrMpDim!!1) :: Int
-      wBnd = sqrt (6.0 / (fromIntegral (numInpPer + numOutPer)))
-      w = RR.randomishDoubleArray (R.Z R.:. (numFltrs::Int) R.:. ((fltrDim!!0)::Int) R.:. ((fltrDim!!1)::Int) R.:. ((fltrDim!!2)::Int)) (-wBnd) wBnd 1
-      b = R.fromUnboxed (R.Z R.:. (numFltrs::Int)) (VUN.replicate numFltrs (0 :: Double))
-      convOutpt = convolve input (1:inpImgDim) (R.delay w) (numFltrs:fltrDim) strd ftrMpSd
-      thresh = 0.0 :: Double
-      actvtn =  (R.+^) convOutpt (R.reshape (R.Z R.:. (1::Int) R.:. (numFltrs::Int) R.:. (1::Int) R.:. (1::Int)) b)
-      abvThresh = R.map (\e -> if e > thresh then (e - thresh) else 0) actvtn
-      outP = abvThresh
+      numOutPer =  ((numFltrs * ftrMpDim!!0 * ftrMpDim!!1) :: Int) `strct` ftrMpDim `debug` "numOutPer"
+      wBnd = sqrt (6.0 / (fromIntegral (numInpPer + numOutPer))) `debug` "wBnd"
+      w = RR.randomishDoubleArray (R.Z R.:. (numFltrs::Int) R.:. ((fltrDim!!0)::Int) R.:. ((fltrDim!!1)::Int) R.:. ((fltrDim!!2)::Int)) (-wBnd) wBnd 1 `debug` "w"
+      -- XXX on Neural Netowkr update b should be a list of numFltrs value each replicated ftrMapSd * ftrMpSd times
+      b = [0 | _ <- [1..numFltrs * ftrMpSd * ftrMpSd]] `debug` "b"
+      b_tens = RU.fromListUnboxed (R.Z R.:. (1::Int) R.:. (numFltrs::Int) R.:. (ftrMpSd::Int) R.:. (ftrMpSd::Int)) b `debug` "b_tens"
+      convOutpt = convolve input (1:inpImgDim) (R.delay w) (numFltrs:fltrDim) strd ftrMpSd `debug` "convOutpt"
+      asrt_co = (assert_eq (R.extent convOutpt) (R.Z R.:. (1::Int) R.:. (16::Int) R.:. (20::Int) R.:. (20::Int)) "ly1 convOutpt") `debug` "asrt_co"
+      thresh = (0.0 :: Double) `strct` asrt_co
+      actvtn =  (R.+^) convOutpt b_tens `debug` "actvtn"
+      asrt_actv = (assert_eq (R.extent actvtn) (R.Z R.:. (1::Int) R.:. (16::Int) R.:. (20::Int) R.:. (20::Int)) "ly1 actvtn") `debug` "asrt_actv"
+      abvThresh = (R.map (\e -> if e > thresh then (e - thresh) else 0) actvtn) `strct` asrt_actv `debug` "abvThresh"
+      outP = abvThresh`debug` "outP"
+      asrt_o = (assert_eq (R.extent outP) (R.Z R.:. (1::Int) R.:. (16::Int) R.:. (20::Int) R.:. (20::Int)) "ly1 outP") --`debug` "asrt_o"
       -- XXX: Validate extent outP is (1, 16, 20, 20)
-  in outP
+  in outP `strct` asrt_o `debug` ("lyr1 out assrt" ++ show(asrt_o))
 
 cnvLyr2 input =
-  let inpImgDim = [16 :: Int, 20 :: Int, 20 :: Int]
+  -- XXX input validation
+  -- input has extent 1, 16, 20 ,20
+
+  let asrt = (assert_eq (R.extent input) (R.Z R.:. (1::Int) R.:. (16::Int) R.:. (20::Int) R.:. (20::Int)) "ly2 input") `strct` input `debug` "lyr2 inp assrt"
+      inpImgDim = [16 :: Int, 20 :: Int, 20 :: Int] `strct` asrt `debug` ("assrt" ++ show(asrt))
       numFltrs = (32 :: Int)
       fltrDim = [16 :: Int, 4 :: Int, 4 :: Int]
       strd = 2 :: Int
       -- number of input connections per neuron
       numInpPer =  (fltrDim!!0 * fltrDim!!1 * fltrDim!!2) :: Int
       -- Feature map dimensions
-      ftrMpSd = 1 + (round ((fromIntegral (inpImgDim!!1 - fltrDim!!1)) / 4.0)) :: Int
+      ftrMpSd = ((1 + quot (inpImgDim!!1 - fltrDim!!1) strd) :: Int)
       ftrMpDim = [ftrMpSd, ftrMpSd]
       -- number of input connections per neuron
       numOutPer =  (numFltrs * ftrMpDim!!0 * ftrMpDim!!1) :: Int
       wBnd = sqrt (6.0 / (fromIntegral (numInpPer + numOutPer)))
       w = RR.randomishDoubleArray (R.Z R.:. (numFltrs::Int) R.:. ((fltrDim!!0)::Int) R.:. ((fltrDim!!1)::Int) R.:. ((fltrDim!!2)::Int)) (-wBnd) wBnd 1
-      b = R.fromUnboxed (R.Z R.:. (numFltrs::Int)) (VUN.replicate numFltrs (0 :: Double))
+      b = [0 | _ <- [1..numFltrs * ftrMpSd * ftrMpSd]]
+      b_tens = RU.fromListUnboxed  (R.Z R.:. (1::Int) R.:. (numFltrs::Int) R.:. (ftrMpSd::Int) R.:. (ftrMpSd::Int)) b
       convOutpt = convolve input (1:inpImgDim) (R.delay w) (numFltrs:fltrDim) strd ftrMpSd
       thresh = 0.0 :: Double
-      actvtn =  (R.+^) convOutpt (R.reshape (R.Z R.:. (1::Int) R.:. (numFltrs::Int) R.:. (1::Int) R.:. (1::Int)) b)
-      abvThresh = R.map (\e -> if e > thresh then (e - thresh) else 0) actvtn
-      outP = R.reshape (R.Z R.:. (1::Int) R.:. (2912::Int)) abvThresh
-      -- XXX: Validate extent outP is (1, 32, 9, 9)
-  in outP
+      actvtn =  (R.+^) convOutpt b_tens
+      asrt_actv = (assert_eq (R.extent actvtn) (R.Z R.:. (1::Int) R.:. (32::Int) R.:. (9::Int) R.:. (9::Int)) "ly2 actvtn") `debug` "asrt_actv"
+      abvThresh = R.map (\e -> if e > thresh then (e - thresh) else 0) actvtn `strct` asrt_actv 
+      outP = R.reshape (R.Z R.:. (1::Int) R.:. (2592::Int)) abvThresh `strct` abvThresh
+      asrt_o = (assert_eq (R.extent outP) (R.Z R.:. (1::Int) R.:. (2592::Int)) "ly2 outP") `debug` "asrt_o"
+      -- XXX: Validate extent outP is (1, 32 * 9 * 9)
+  in outP `strct` asrt_o `debug` ("lyr2 out assrt" ++ show(asrt_o))
 
 cnctdLyr3 input =
-  let nIn = 32 * 9 * 9 :: Int -- Number of inputs
+  -- XXX input validation
+  -- input has extent 1, 32 * 9 * 9
+
+  let asrt = (assert_eq (R.extent input) (R.Z R.:. (1::Int) R.:. (2592::Int)) "ly3 input") `strct` input `debug` "lyr3 inp assrt"
+      nIn = (32 * 9 * 9 :: Int) `strct` asrt  -- Number of inputs
       nOut = 256 :: Int -- Number of neurons
       wBnd = sqrt (6.0 / (fromIntegral (nIn + nOut)))
       w = RR.randomishDoubleArray (R.Z R.:. nIn R.:. nOut) (-wBnd) wBnd 1
       -- XXX: Orentation of b could need to be revised col vs row vec
-      b = R.fromUnboxed (R.Z R.:. nOut R.:. (1 :: Int)) (VUN.replicate nOut (0 :: Double))
+      b = R.fromUnboxed (R.Z R.:. (1 :: Int) R.:. nOut) (VUN.replicate nOut (0 :: Double))
       thresh = 0.0
       actvtn = (R.+^) (RM.mmultS (RU.computeUnboxedS input) w) b
       abvThresh = R.map (\e -> if e > thresh then (e - thresh) else 0) actvtn
       outP = abvThresh
-  in outP
+      asrt_o = (assert_eq (R.extent outP) (R.Z R.:. (1::Int) R.:. (256::Int)) "ly3 outP") `debug` "asrt_o"
+  -- XXX output validation
+  -- output has extent 256
+  in outP `strct` asrt_o `debug` ("lyr3 out assrt" ++ show(asrt_o))
 
 outptLyr4 input=
-  let nIn = 256 :: Int -- Number of inputs
+  -- XXX input validation
+  -- input has extent 256
+  let asrt = (assert_eq (R.extent input) (R.Z R.:. (1::Int) R.:. (256::Int)) "ly4 input") `strct` input `debug` "lyr4 inp assrt"
+      nIn = (256 :: Int) `strct` asrt  -- Number of inputs
       nOut = length availActns :: Int -- Number of neurons
       wBnd = sqrt (6.0 / (fromIntegral (nIn + nOut)))
       w = RR.randomishDoubleArray (R.Z R.:. nIn R.:. nOut) (-wBnd) wBnd 1
-      b = R.fromUnboxed (R.Z R.:. nOut R.:. (1 :: Int)) (VUN.replicate nOut (0 :: Double))
+      b = R.fromUnboxed (R.Z R.:. (1 :: Int) R.:. nOut) (VUN.replicate nOut (0 :: Double))
       actvtn = (R.+^) (RM.mmultS (RU.computeUnboxedS input) w) b
       outP = VUN.fromList (R.toList actvtn)
-  in outP
+      asrt_o = (assert_eq (VUN.length outP) (length availActns) "ly4 outP") `debug` "asrt_o"
+  -- XXX output validation
+  -- output has extent (length availActns)
+  in outP `strct` asrt_o `debug` ("lyr4 out assrt" ++ show(asrt_o))
 
 convolve
   -- :: (Num a, RU.Unbox a)
@@ -226,11 +292,13 @@ convolve img imgDim fltr fltrDim strd ftrMpSd =
       -- res2DAllbk is a list of 2d matricies, we need to flatten all the lists, join them in the correct order, and then reshape to the corretly dimension 4d tensor
       fltn e =
         -- Takes a matirx and flattens it to a list
-        let dim = product (RS.listOfShape (R.extent e)) 
+        let dim = product (RS.listOfShape (R.extent e))
+        -- in R.delay $ RU.fromListUnboxed (R.Z R.:. dim) ([1.0 | _ <- [1..dim]] :: [Double])-- XXX: remove this false line
         in R.reshape (R.Z R.:. dim) e
       res2DFltnd = map fltn res2DAllbk
       -- All of the data for the 4D tensor in a flat 1d array
-      tnsr4DDataFlt = foldl (R.append) (head res2DFltnd) (tail res2DFltnd) 
+      tnsr4DDataFlt = foldl (R.append) (head res2DFltnd) (tail res2DFltnd)
+  -- in R.delay $ R.fromListUnboxed (R.Z R.:. (imgDim!!0) R.:. (fltrDim!!0) R.:. ftrMpSd R.:. ftrMpSd) ([1.0 | _ <- [1..(imgDim!!0 * fltrDim!!0 * ftrMpSd * ftrMpSd)]] :: [Double]) XXX: remove this false line
   in R.reshape (R.Z R.:. (imgDim!!0) R.:. (fltrDim!!0) R.:. ftrMpSd R.:. ftrMpSd) tnsr4DDataFlt
 
 
@@ -255,27 +323,6 @@ conv2D (img, fltr, strd)
 -- ##PREPROCESSOR
 -- Screen space interested in, specified as (upperLeftCoord, lowerRightCoord)
 nnImgSz = (80, 80)
-
-scrnToNnInp scr = 
-  -- Takes a raw uncroped screen string from ale and makes the full 
-  -- transformation into an input ready for the neural network
-  -- Param:
-    -- scr screen string
-  -- Result:
-    -- scr screen as list of doubles
-
-  -- Make hex list from string
-  scr `seq` let hxLs = chunksOf 2 (C.unpack scr) in
-  -- Crop 33 rows off of Top and 17 rows off of bottom
-  hxLs `seq` let crpHxLs = drop (33 * 160) (take (193 * 160) hxLs) in 
-  -- Downsize to nnImgSz: 80,by 80, XXX: Better Resize
-  crpHxLs `seq` let colDropNnHxLs = map head (chunksOf 2 crpHxLs) in
-  colDropNnHxLs `seq` let rowDropNnHxLs = foldl (++) [] (map head (chunksOf 2 (chunksOf 80 colDropNnHxLs))) in
-  -- XXX Pad with blank pixels from 80,80 to 84,84
-  let rowDropNnHxLs = rowDropNnHxLs ++ ["00" | x <- [1..(84*84 - 80*80)]] in
-  -- Convert to Grayscale
-  rowDropNnHxLs `seq` let grayImg = VUN.fromList [magicArray R.! (R.Z R.:. ((hTD (hex!!1))::Int) R.:. ((hTD  (hex!!0))::Int)) | hex <- rowDropNnHxLs] in
-  rowDropNnHxLs `seq` grayImg
 
 
 magicArray = 
@@ -347,7 +394,7 @@ convolveOutP
 
 convolveOutP getOut kernel image
  = kernel `R.deepSeqArray` image `R.deepSeqArray` 
-   R.computeUnboxedS $ RUS.unsafeTraverse image id stencil
+   R.computeUnboxedS $ R.traverse image id stencil
  where  
         krnSh@(R.Z R.:. krnHeight R.:. krnWidth)  = R.extent kernel        
         imgSh@(R.Z R.:. imgHeight R.:. imgWidth)  = R.extent image
@@ -381,7 +428,7 @@ convolveOutP getOut kernel image
                | otherwise
                = let  ix@(sh R.:. y R.:. x)  = RS.fromIndex krnSh count
                       ix'      = sh R.:. y + jkrnHeight' R.:. x + ikrnWidth'
-                      here     = kernel `R.unsafeIndex` ix * (get' ix')
+                      here     = kernel `R.index` ix * (get' ix')
                  in integrate (count + 1) (acc + here)
 
            in integrate 0 0
