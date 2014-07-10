@@ -156,8 +156,10 @@ nnBestAction mem =
         -- Send input to first layer and propogate through to output layer
         actnProb = (outptLyr4 (cnctdLyr3 (cnvLyr2 (cnvLyr1 tens)))) `strct` tens
     -- Get the most probable action
-    in availActns!!(VUN.maxIndex actnProb) `strct` actnProb
-    --in "0" `strct` actnProb
+    -- XXX activate most prob bease on maxIndex
+    -- in availActns!!(VUN.maxIndex actnProb) `strct` actnProb
+    in (availActns!!1) `debug` "choice " ++ show (VUN.maxIndex actnProb)
+    --in "0" `strct` actnProb -- segfault?
   -- ##
 
 
@@ -385,17 +387,35 @@ conv2DDebug (img, fltr, strd)
   -- XXX: convolve with repa vanilla function, and then drop elements to satisfy stride strd
   -- Use two conditions one for stride 4 and one for stride 2 since these are the only two conditions this function will be used for
   -- Strd 2 case 20 by 20 image convovled with 4 by 4 gives 9 by 9
-  | strd == 2 = let got  = R.delay $ RU.fromListUnboxed (R.Z R.:. (9::Int) R.:. (9::Int)) [1..(9*9)]
-                --let got2 = R.delay $ (convolveOutPDebug outClamp (R.computeUnboxedS fltr) (R.computeUnboxedS img))
-                --in (R.computeUnboxedS fltr) `R.deepSeqArray` got -- got2 `R.deepSeqArray` got
-                --in ((R.traverse got (\_-> (R.Z R.:. (9:: Int) R.:. (9:: Int))) (\f (R.Z R.:. i R.:. j) -> f (R.Z R.:. (2 * i + 2) R.:. (2 * j + 2)))))
-                in got
+  | strd == 2 = let got  = R.delay $ RU.fromListUnboxed (R.Z R.:. (9::Int) R.:. (9::Int)) ([1..(9*9)] :: [Double])
+                    asrt_in_img = (assert_eq (R.extent img) (R.Z R.:. (20::Int) R.:. (20::Int)) "conv2DDebug img")-- `debug` "conv2DDebug asrt_in_img"
+                    asrt_in_fltr = (assert_eq (R.extent fltr) (R.Z R.:. (4::Int) R.:. (4::Int)) "conv2DDebug fltr") --`debug` "conv2DDebug asrt_in_fltr"
+                --let inp  = R.delay $ RU.fromListUnboxed (R.Z R.:. (20::Int) R.:. (20::Int)) ([1..(20*20)] :: [Double])
+                --in R.delay $ (convolveOutPDebug outClamp (RU.fromListUnboxed (R.Z R.:. (9::Int) R.:. (9::Int)) [1..(9*9)]) (RU.fromListUnboxed (R.Z R.:. (20::Int) R.:. (20::Int)) [1..(20*20)])) `R.deepSeqArray` got
+                --in (R.computeUnboxedS img) `R.deepSeqArray` got -- SEGFAULT: yes
+                --in (img) `R.deepSeqArray` got `debug` show (RU.computeUnboxedS fltr) -- SEGFAULT:
+                --in got `debug` ("img sum " ++ show (R.sumAllS img)) -- SEGFAULT: yes
+                --in (asrt_in_fltr `seq` asrt_in_img `seq` got) -- `debug` ("fltr sum " ++ show (R.sumAllS fltr)) -- SEGFAULT: no
+                --in ((R.traverse inp (\_-> (R.Z R.:. (9:: Int) R.:. (9:: Int))) (\f (R.Z R.:. i R.:. j) -> f (R.Z R.:. (2 * i + 2) R.:. (2 * j + 2))))) -- SEGFAULT: yes
+                --in got -- SEGFAULT: no
+                --in got `debug` ("conv2DDebug img extent: " ++ show (R.extent img)) -- SEGFAULT:
+                --in got `debug` ("conv2DDebug fltr arbitrary index: " ++ show (fltr R.! (R.Z R.:. (0::Int) R.:. (0::Int)) )) -- SEGFAULT: np
+                in got `debug` ("conv2DDebug img arbitrary index: " ++ show (img R.! (R.Z R.:. (0::Int) R.:. (0::Int)) )) -- SEGFAULT: Yes
   -- Strd 4 case, 84 by 84 image convovled with 8 by 8 gives 20 by 20
-  | strd == 4 = let got  = R.delay $ RU.fromListUnboxed (R.Z R.:. (20::Int) R.:. (20::Int)) [1..(20*20)]
-                --let got2 = R.delay $ (convolveOutPDebug outClamp (R.computeUnboxedS fltr) (R.computeUnboxedS img))
-                --in (R.computeUnboxedS fltr) `R.deepSeqArray` got --got2 `R.deepSeqArray` got
-                --in ((R.traverse got (\_-> (R.Z R.:. (20:: Int) R.:. (20:: Int))) (\f (R.Z R.:. i R.:. j) -> f (R.Z R.:. (4 * i + 4) R.:. (4 * j + 4)))))
-                in got
+  | strd == 4 = let got  = R.delay $ RU.fromListUnboxed (R.Z R.:. (20::Int) R.:. (20::Int)) ([1..(20*20)] :: [Double])
+                    asrt_in_img = (assert_eq (R.extent img) (R.Z R.:. (84::Int) R.:. (84::Int)) "conv2DDebug img") --`debug` "conv2DDebug asrt_in_img"
+                    asrt_in_fltr = (assert_eq (R.extent fltr) (R.Z R.:. (8::Int) R.:. (8::Int)) "conv2DDebug fltr") --`debug` "conv2DDebug asrt_in_fltr"
+                --let inp  = R.delay $ RU.fromListUnboxed (R.Z R.:. (84::Int) R.:. (84::Int)) ([1..(84*84)] :: [Double])
+                --in R.delay $ (convolveOutPDebug outClamp ((RU.fromListUnboxed (R.Z R.:. (9::Int) R.:. (9::Int)) [1..(9*9)])) ((RU.fromListUnboxed (R.Z R.:. (84::Int) R.:. (84::Int)) [1..(84*84)]))) `R.deepSeqArray` got
+                --in (R.computeUnboxedS img) `R.deepSeqArray` got -- SEGFAULT: yes
+                --in (img) `R.deepSeqArray` got `debug` show (RU.computeUnboxedS fltr) -- SEGFAULT:
+                --in got `debug` ("img sum " ++ show (R.sumAllS img)) -- SEGFAULT: yes
+                --in (asrt_in_fltr `seq` asrt_in_img `seq` got) -- `debug` ("fltr sum " ++ show (R.sumAllS fltr)) -- SEGFAULT: no
+                --in ((R.traverse inp (\_-> (R.Z R.:. (20:: Int) R.:. (20:: Int))) (\f (R.Z R.:. i R.:. j) -> f (R.Z R.:. (4 * i + 4) R.:. (4 * j + 4))))) -- SEGFAULT: yes
+                --in got -- SEGFAULT: no
+                --in got `debug` ("conv2DDebug img extent: " ++ show (R.extent img)) -- SEGFAULT:
+                --in got `debug` ("conv2DDebug fltr arbitrary index: " ++ show (fltr R.! (R.Z R.:. (0::Int) R.:. (0::Int)) )) -- SEGFAULT: No
+                in got `debug` ("conv2DDebug img arbitrary index: " ++ show (img R.! (R.Z R.:. (0::Int) R.:. (0::Int)) )) -- SEGFAULT: Yed
   -- | otherwise = error ("Stride size nt supported sorry!: stride " ++ show(strd))
 
 
