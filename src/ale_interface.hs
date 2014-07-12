@@ -158,7 +158,7 @@ nnBestAction mem =
     -- Get the most probable action
     -- XXX activate most prob bease on maxIndex
     -- in availActns!!(VUN.maxIndex actnProb) `strct` actnProb
-    in (availActns!!1) `debug` "choice " ++ show (VUN.maxIndex actnProb)
+    in (availActns!!1) `debug` "choice " ++ show (VUN.maxIndex actnProb) `debug` ("nnBestAction sumOf tens " ++ show (R.sumAllS tens))
     --in "0" `strct` actnProb -- segfault?
   -- ##
 
@@ -343,7 +343,10 @@ convolve img imgDim fltr fltrDim strd ftrMpSd =
         -- returns a 2d matrix as the resul of convolving using stride strd
         -- img[b, i, : , :] with fltr[k, i, :, :] for all i, and summing over i
         let iRange = [1..(imgDim!!1)]
-            iResults = map conv2DDebug [((R.slice img (R.Z R.:. (b :: Int) R.:. (i :: Int) R.:. R.All R.:. R.All)), (R.slice fltr (R.Z R.:. (k :: Int) R.:. (i :: Int) R.:. R.All R.:. R.All)), strd) | i <- iRange] 
+            temp2Dslice = R.delay (R.fromListUnboxed (R.Z R.:. ((imgDim!!2)::Int) R.:. ((imgDim!!3)::Int)) [1.0 | _ <- [1..(imgDim!!2)*(imgDim!!3)]]) -- XXX remove this line
+            iResults = map conv2D [(temp2Dslice, (R.slice fltr (R.Z R.:. (k :: Int) R.:. (i :: Int) R.:. R.All R.:. R.All)), strd) | i <- iRange] `debug` ("convolve mig extent: " ++ (show (R.extent img)) ++ "\n") `debug` ("convolve b k: " ++ (show b) ++ (show k)) -- XXX remove this line
+            -- XXX: reactive this next line
+            --iResults = map conv2D [((R.slice img (R.Z R.:. (b :: Int) R.:. (i :: Int) R.:. R.All R.:. R.All)), (R.slice fltr (R.Z R.:. (k :: Int) R.:. (i :: Int) R.:. R.All R.:. R.All)), strd) | i <- iRange] 
         in R.computeUnboxedS (foldl (R.+^) (head iResults) (tail iResults)) 
       res2DAllbk = map mapHelper combRange
       -- res2DAllbk is a list of 2d matricies, we need to flatten all the lists, join them in the correct order, and then reshape to the corretly dimension 4d tensor
