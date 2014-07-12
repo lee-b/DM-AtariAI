@@ -19,6 +19,9 @@ import qualified Data.ByteString.Char8 as C
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VUN
 
+-- IO monad branch: Wrap all the functions with the IO monad so we can use computeP
+
+
 -- Running List of possible implemetation incorrectness
   -- 4D tensor construvtion from flat list could give wrongly indexed data
 
