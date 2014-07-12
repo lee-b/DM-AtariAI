@@ -334,19 +334,20 @@ convolve img imgDim fltr fltrDim strd ftrMpSd =
   -- fltrDim 4tuple - (fltBatchSize, numFeatureMaps, numRows, numCols)
   -- convenice value - equal 1 + (imgRows- fltRows) strd
   -- Output: Delayed 4D tensor
-  let bRange = [1..(imgDim!!0)]
-      kRange = [1..(fltrDim!!0)]
+  let bRange = [0..(imgDim!!0)-1]
+      kRange = [0..(fltrDim!!0)-1]
       combRange = [(b,k) | b <- bRange, k <- kRange] 
       mapHelper :: (Int, Int) -> RU.Array RU.U RI.DIM2 Double
       mapHelper (b,k) = 
         -- Takes the Image batchSize index and the filter batchSize index
         -- returns a 2d matrix as the resul of convolving using stride strd
         -- img[b, i, : , :] with fltr[k, i, :, :] for all i, and summing over i
-        let iRange = [1..(imgDim!!1)]
-            temp2Dslice = R.delay (R.fromListUnboxed (R.Z R.:. ((imgDim!!2)::Int) R.:. ((imgDim!!3)::Int)) [1.0 | _ <- [1..(imgDim!!2)*(imgDim!!3)]]) -- XXX remove this line
-            iResults = map conv2D [(temp2Dslice, (R.slice fltr (R.Z R.:. (k :: Int) R.:. (i :: Int) R.:. R.All R.:. R.All)), strd) | i <- iRange] `debug` ("convolve mig extent: " ++ (show (R.extent img)) ++ "\n") `debug` ("convolve b k: " ++ (show b) ++ (show k)) -- XXX remove this line
+        let iRange = [0..(imgDim!!1)-1]
+            --temp2Dslice = R.delay (R.fromListUnboxed (R.Z R.:. ((imgDim!!2)::Int) R.:. ((imgDim!!3)::Int)) [1.0 | _ <- [1..(imgDim!!2)*(imgDim!!3)]]) -- XXX remove this line
+
+            --iResults = map conv2D [(temp2Dslice, (R.slice fltr (R.Z R.:. (k :: Int) R.:. (i :: Int) R.:. R.All R.:. R.All)), strd) | i <- iRange] `debug` ("convolve sumOf img " ++ show (R.sumAllS img)) `debug` ("convolve mig extent: " ++ (show (R.extent img)) ++ "\n") `debug` ("convolve b k: " ++ (show b) ++ (show k)) -- XXX remove this line
             -- XXX: reactive this next line
-            --iResults = map conv2D [((R.slice img (R.Z R.:. (b :: Int) R.:. (i :: Int) R.:. R.All R.:. R.All)), (R.slice fltr (R.Z R.:. (k :: Int) R.:. (i :: Int) R.:. R.All R.:. R.All)), strd) | i <- iRange] 
+            iResults = map conv2D [((R.slice img (R.Z R.:. (b :: Int) R.:. (i :: Int) R.:. R.All R.:. R.All)), (R.slice fltr (R.Z R.:. (k :: Int) R.:. (i :: Int) R.:. R.All R.:. R.All)), strd) | i <- iRange] 
         in R.computeUnboxedS (foldl (R.+^) (head iResults) (tail iResults)) 
       res2DAllbk = map mapHelper combRange
       -- res2DAllbk is a list of 2d matricies, we need to flatten all the lists, join them in the correct order, and then reshape to the corretly dimension 4d tensor
