@@ -19,7 +19,8 @@ import qualified Data.Array.Repa.Index as RI
 import qualified Data.ByteString.Char8 as C
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VUN
-
+import qualified Data.Array.Accelerate.IO as AIO
+import qualified Data.Array.Accelerate as A
 -- IO monad branch: Wrap all the functions with the IO monad so we can use computeP
 
 
@@ -341,12 +342,12 @@ conv2D (img, fltr, strd) = do
   if strd == 2 then do
     fltrC <- R.computeUnboxedP fltr
     imgC <- R.computeUnboxedP img
-    got <- (RC.convolveOutP RC.outClamp fltrC imgC)
+    got <- (convolveOutP RC.outClamp fltrC imgC)
     return ((R.traverse got (\_-> (R.Z R.:. (9:: Int) R.:. (9:: Int))) (\f (R.Z R.:. i R.:. j) -> f (R.Z R.:. (2 * i + 2) R.:. (2 * j + 2)))))
   else do
     fltrC <- R.computeUnboxedP fltr
     imgC <- R.computeUnboxedP img
-    got <- (RC.convolveOutP RC.outClamp fltrC imgC)
+    got <- (convolveOutP RC.outClamp fltrC imgC)
     return ((R.traverse got (\_-> (R.Z R.:. (20:: Int) R.:. (20:: Int))) (\f (R.Z R.:. i R.:. j) -> f (R.Z R.:. (4 * i + 4) R.:. (4 * j + 4)))))
 
 
@@ -391,11 +392,9 @@ hTD h =
 --  -> RI.DIM2   -- ^ Index of element we were trying to get.
 --  -> a
 
-
 ---- | Use the provided value for every out-of-range element.
 --outAs :: a -> GetOut a
 --outAs x _ _ _ = x
-
 
 ---- | If the requested element is out of range use
 ----   the closest one from the real image.
@@ -413,106 +412,55 @@ hTD h =
 --    | y >= yLen = get (sh R.:. (yLen - 1) R.:. x)
 --    | otherwise = get (sh R.:. y    R.:. x)
 
-
-
 ------ | Image-kernel convolution, 
 ------   which takes a function specifying what value to use for out-of-range elements.
---convolveOutP
---  -- :: (Num a, RU.Unbox a)
---  :: GetOut Double   -- ^ How to handle out-of-range elements.
---  -> RU.Array RU.U RI.DIM2 Double -- ^ Stencil to use in the convolution.
---  -> RU.Array RU.U RI.DIM2 Double -- ^ Input image.
---  -> RU.Array RU.U RI.DIM2 Double
+convolveOutP
+  -- :: (Num a, RU.Unbox a)
+  :: (Monad m)
+  => RC.GetOut Double   -- ^ How to handle out-of-range elements.
+  -> RU.Array RU.U RI.DIM2 Double -- ^ Stencil to use in the convolution.
+  -> RU.Array RU.U RI.DIM2 Double -- ^ Input image.
+  -> m (RU.Array AIO.A RI.DIM2 Double)
 
---convolveOutP getOut kernel image
--- = kernel `R.deepSeqArray` image `R.deepSeqArray` 
---   R.computeUnboxedS $ R.traverse image id stencil
--- where  
---        krnSh@(R.Z R.:. krnHeight R.:. krnWidth)  = R.extent kernel        
---        imgSh@(R.Z R.:. imgHeight R.:. imgWidth)  = R.extent image
+convolveOutP getOut kernel image
+ = kernel `R.deepSeqArray` image `R.deepSeqArray` 
+   AIO.computeAccP $ R.traverse image id stencil
+ where  
+        krnSh@(R.Z R.:. krnHeight R.:. krnWidth)  = R.extent kernel        
+        imgSh@(R.Z R.:. imgHeight R.:. imgWidth)  = R.extent image
 
---        krnHeight2 = krnHeight `div` 2
---        krnWidth2  = krnWidth  `div` 2
---        krnSize  = RS.size krnSh
+        krnHeight2 = krnHeight `div` 2
+        krnWidth2  = krnWidth  `div` 2
+        krnSize  = RS.size krnSh
 
---        -- If we're too close to the edge of the input image then
---        -- we can't apply the stencil because we don't have enough data.
---        borderLeft = krnWidth2
---        borderRight  = imgWidth   - krnWidth2  - 1
---        borderUp = krnHeight2
---        borderDown = imgHeight  - krnHeight2 - 1
+        -- If we're too close to the edge of the input image then
+        -- we can't apply the stencil because we don't have enough data.
+        borderLeft = krnWidth2
+        borderRight  = imgWidth   - krnWidth2  - 1
+        borderUp = krnHeight2
+        borderDown = imgHeight  - krnHeight2 - 1
 
---        -- The actual stencil function.
---        stencil get (_ R.:. j R.:. i)
---         = let
---              get' ix@(_ R.:. y R.:. x)
---               | x < borderLeft = getOut get imgSh ix
---               | x > borderRight  = getOut get imgSh ix
---               | y < borderUp   = getOut get imgSh ix
---               | y > borderDown = getOut get imgSh ix
---               | otherwise    = get ix
+        -- The actual stencil function.
+        stencil get (_ R.:. j R.:. i)
+         = let
+              get' ix@(_ R.:. y R.:. x)
+               | x < borderLeft = getOut get imgSh ix
+               | x > borderRight  = getOut get imgSh ix
+               | y < borderUp   = getOut get imgSh ix
+               | y > borderDown = getOut get imgSh ix
+               | otherwise    = get ix
 
---              ikrnWidth' = i - krnWidth2
---              jkrnHeight'  = j - krnHeight2
+              ikrnWidth' = i - krnWidth2
+              jkrnHeight'  = j - krnHeight2
 
---              integrate count acc
---               | count == krnSize   = acc
---               | otherwise
---               = let  ix@(sh R.:. y R.:. x)  = RS.fromIndex krnSh count
---                      ix'      = sh R.:. y + jkrnHeight' R.:. x + ikrnWidth'
---                      here     = kernel `R.index` ix * (get' ix')
---                 in integrate (count + 1) (acc + here)
+              integrate count acc
+               | count == krnSize   = acc
+               | otherwise
+               = let  ix@(sh R.:. y R.:. x)  = RS.fromIndex krnSh count
+                      ix'      = sh R.:. y + jkrnHeight' R.:. x + ikrnWidth'
+                      here     = kernel `R.index` ix * (get' ix')
+                 in integrate (count + 1) (acc + here)
 
---           in integrate 0 0
+           in integrate 0 0
 
 
-
------- | Image-kernel convolution, 
-------   which takes a function specifying what value to use for out-of-range elements.
---convolveOutP
---  -- :: (Num a, RU.Unbox a)
---  :: GetOut Double   -- ^ How to handle out-of-range elements.
---  -> RU.Array RU.U RI.DIM2 Double -- ^ Stencil to use in the convolution.
---  -> RU.Array RU.U RI.DIM2 Double -- ^ Input image.
---  -> RU.Array RU.U RI.DIM2 Double
-
---convolveOutP getOut kernel image
--- = kernel `R.deepSeqArray` image `R.deepSeqArray` 
---   R.computeUnboxedS $ R.traverse image id stencil
--- where  
---        krnSh@(R.Z R.:. krnHeight R.:. krnWidth)  = R.extent kernel        
---        imgSh@(R.Z R.:. imgHeight R.:. imgWidth)  = R.extent image
-
---        krnHeight2 = krnHeight `div` 2
---        krnWidth2  = krnWidth  `div` 2
---        krnSize  = RS.size krnSh
-
---        -- If we're too close to the edge of the input image then
---        -- we can't apply the stencil because we don't have enough data.
---        borderLeft = krnWidth2
---        borderRight  = imgWidth   - krnWidth2  - 1
---        borderUp = krnHeight2
---        borderDown = imgHeight  - krnHeight2 - 1
-
---        -- The actual stencil function.
---        stencil get (_ R.:. j R.:. i)
---         = let
---              get' ix@(_ R.:. y R.:. x)
---               | x < borderLeft = getOut get imgSh ix
---               | x > borderRight  = getOut get imgSh ix
---               | y < borderUp   = getOut get imgSh ix
---               | y > borderDown = getOut get imgSh ix
---               | otherwise    = get ix
-
---              ikrnWidth' = i - krnWidth2
---              jkrnHeight'  = j - krnHeight2
-
---              integrate count acc
---               | count == krnSize   = acc
---               | otherwise
---               = let  ix@(sh R.:. y R.:. x)  = RS.fromIndex krnSh count
---                      ix'      = sh R.:. y + jkrnHeight' R.:. x + ikrnWidth'
---                      here     = kernel `R.index` ix * (get' ix')
---                 in integrate (count + 1) (acc + here)
-
---           in integrate 0 0
