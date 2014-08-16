@@ -19,28 +19,31 @@ unWrapList :: (Monad m) => [m a] -> m [a]
 unWrapList ls = do
   foldr apndWrpedE (wrap []) ls
 
+sol :: R.Shape sh => [Int] -> sh
+sol = R.shapeOfList
+
+los :: R.Shape sh => sh -> [Int]
+los = R.listOfShape
 
 conv4D
   -- :: (Num a, RU.Unbox a)
   -- => 
   :: (Monad m) 
   => RU.Array R.D RI.DIM4 Double
-  -> [Int]
   -> RU.Array R.D RI.DIM4 Double
-  -> [Int]
-  -> Int
   -> Int
   -> m(RU.Array R.D RI.DIM4 Double)
 
-conv4D img imgDim fltr fltrDim strd ftrMpSd = do
+conv4D img fltr strd = do
   -- Neural network convolution
   -- both inputs are 4d tensors, second dimension must match
-  -- Params:
-  -- imgDim 4tuple - (batchSize, numFeatureMaps, numRows, numCols)
-  -- fltrDim 4tuple - (fltBatchSize, numFeatureMaps, numRows, numCols)
-  -- convenice value - equal 1 + (imgRows- fltRows) strd
+
+  -- convenice value - equal 1 + (imgRows- fltRows) / strd
   -- Output: Delayed 4D tensor
-  let bRange = [0..(imgDim!!0)-1]
+  let imgDim = reverse $ los (R.extent img)
+      fltrDim = reverse $ los (R.extent fltr)
+      ftrMpSd = (1 + quot (imgDim!!2 - fltrDim!!2) strd)
+      bRange = [0..(imgDim!!0)-1]
       kRange = [0..(fltrDim!!0)-1]
       combRange = [(b,k) | b <- bRange, k <- kRange] 
       mapHelper :: (Monad m) => (Int, Int) -> m(RU.Array RU.U RI.DIM2 Double)
@@ -58,12 +61,12 @@ conv4D img imgDim fltr fltrDim strd ftrMpSd = do
       -- res2DAllbk is a list of 2d matricies, we need to flatten all the lists, join them in the correct order, and then reshape to the corretly dimension 4d tensor
   let fltn e =
         -- Takes a matirx and flattens it to a list
-        let dim = product (R.listOfShape (R.extent e))
+        let dim = product (los (R.extent e))
         in R.reshape (R.Z R.:. dim) e
       res2DFltnd = map fltn res2DAllbk
       -- All of the data for the 4D tensor in a flat 1d array
       tnsr4DDataFlt = foldl (R.append) (head res2DFltnd) (tail res2DFltnd)
-  return (R.reshape (R.Z R.:. (imgDim!!0) R.:. (fltrDim!!0) R.:. ftrMpSd R.:. ftrMpSd) tnsr4DDataFlt)
+  return (R.reshape (sol [ftrMpSd, ftrMpSd, fltrDim!!0, imgDim!!0]) tnsr4DDataFlt)
 
 conv2D
   :: (Monad m)
@@ -72,26 +75,16 @@ conv2D
 
 conv2D (img, fltr, strd) = do
   -- vanilla 2d convultion with stride strd - very hackish fuction
-  
-  -- convolve with repa vanilla function, and then drop elements to satisfy stride strd
-  
-  -- Use two conditions one for stride 4 and one for stride 2 since these are the only two conditions this function will be used for
-  -- Strd 2 case 20 by 20 image convovled with 4 by 4 gives 9 by 9
-  -- | strd == 2 = let got = (convolveOutP outClamp (R.computeUnboxedS fltr) (R.computeUnboxedS img))
-  --              in ((R.traverse got (\_-> (R.Z R.:. (9:: Int) R.:. (9:: Int))) (\f (R.Z R.:. i R.:. j) -> f (R.Z R.:. (2 * i + 2) R.:. (2 * j + 2)))))
-  -- Strd 4 case, 84 by 84 image convovled with 8 by 8 gives 20 by 20
-  -- | strd == 4 = let got = (convolveOutP outClamp (R.computeUnboxedS fltr) (R.computeUnboxedS img))
-  --              in ((R.traverse got (\_-> (R.Z R.:. (20:: Int) R.:. (20:: Int))) (\f (R.Z R.:. i R.:. j) -> f (R.Z R.:. (4 * i + 4) R.:. (4 * j + 4)))))
-  -- | otherwise = error ("Stride size nt supported sorry!: stride " ++ show(strd))
 
-  -- | otherwise = error ("Stride size nt supported sorry!: stride " ++ show(strd))
+  -- Strd 2 case 20 by 20 image convovled with 4 by 4 gives 9 by 9
   if strd == 2 then do
     fltrC <- R.computeUnboxedP fltr
     imgC <- R.computeUnboxedP img
     got <- (RC.convolveOutP RC.outClamp fltrC imgC)
-    return ((R.traverse got (\_-> (R.Z R.:. (9:: Int) R.:. (9:: Int))) (\f (R.Z R.:. i R.:. j) -> f (R.Z R.:. (2 * i + 2) R.:. (2 * j + 2)))))
+    return (R.traverse got (\_ -> sol [9, 9]) (\f (R.Z R.:. i R.:. j) -> f (sol [2 * j + 2, 2 * i + 2])))
+  -- Strd 4 case, 84 by 84 image convovled with 8 by 8 gives 20 by 20
   else do
     fltrC <- R.computeUnboxedP fltr
     imgC <- R.computeUnboxedP img
     got <- (RC.convolveOutP RC.outClamp fltrC imgC)
-    return ((R.traverse got (\_-> (R.Z R.:. (20:: Int) R.:. (20:: Int))) (\f (R.Z R.:. i R.:. j) -> f (R.Z R.:. (4 * i + 4) R.:. (4 * j + 4)))))
+    return (R.traverse got (\_-> sol [20, 20]) (\f (R.Z R.:. i R.:. j) -> f (sol [4 * j + 4, 4 * i + 4])))
