@@ -10,4 +10,6 @@ frameSkip = 4
 displayScreen = True
 
 numGames = 1000
+
+memSize = 300
  

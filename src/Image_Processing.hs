@@ -19,7 +19,8 @@ scrnToNnInp scr =
       crpHxLs = drop (33 * 160) (take (193 * 160) hxLs)
   -- Downsize to nnImgSz: 80,by 80, XXX: Better Resize
       colDropNnHxLs = map head (chunksOf 2 crpHxLs)
-      rowDropNnHxLs = foldl (++) [] (map head (chunksOf 2 (chunksOf 80 colDropNnHxLs)))
+      rowDropNnHxLs = foldl (++) [] 
+                        (map head (chunksOf 2 (chunksOf 80 colDropNnHxLs)))
   -- XXX Pad with blank pixels from 80,80 to 84,84
       rowDropNnHxLsPded = rowDropNnHxLs ++ ["00" | x <- [1..(84*84 - 80*80)]]
   -- Convert to Grayscale

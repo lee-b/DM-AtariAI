@@ -1,6 +1,4 @@
 -- Author: Hamzeh Alsalhi <93hamsal@gmail.com>
--- {-# LANGUAGE BangPatterns, PackageImports #-}
--- {-# OPTIONS -Wall -fno-warn-missing-signatures -fno-warn-incomplete-patterns #-}
 module Main where
 import Data.List.Split
 
@@ -16,22 +14,15 @@ import qualified Configure as CF
 import qualified Image_Processing as IP
 import qualified ALE_Interface as ALE
 
--- Running List of possible implemetation incorrectness
-  -- 4D tensor construvtion from flat list could give wrongly indexed data
-
-memSizez = 300
-
-strct = flip seq
 
 main = do
   (toA, fromA) <- ALE.initialize
-
   -- Send action "noop, noop" to start game
   str <- C.hGetLine fromA
   fdWrite toA "1,18\n"
-
   -- Enter the main loop
-  playGame fromA toA V.empty 0 0 0 ()
+  playGame fromA toA V.empty 0 0 0 NN.initilaizeEnv
+
 
 playGame fromA toA mem memSz frmsPlyd gamesPlayed nnEnv = 
  mem `seq` frmsPlyd `seq` memSz `seq` 
@@ -44,22 +35,22 @@ playGame fromA toA mem memSz frmsPlyd gamesPlayed nnEnv =
       fdWrite toA "45,1\n"
       playGame fromA toA mem memSz frmsPlyd gamesPlayed nnEnv
     else do
-      (act, nnEnvRet) <- (chooseAction mem frmsPlyd nnEnv) `strct` strTkns
+      (act, nnEnvRet) <- (chooseAction mem frmsPlyd nnEnv)
       fdWrite toA (act ++ ",18\n")
       let smallScr = IP.scrnToNnInp scrStr
       putStrLn $ "Frames Played " ++ (show frmsPlyd)
-      if memSz >= memSizez then
+      if memSz >= CF.memSize then
         playGame fromA toA (smallScr `V.cons` (V.init mem)) memSz (frmsPlyd + 1) 
           gamesPlayed nnEnvRet
       else 
         playGame fromA toA (smallScr `V.cons` mem) (memSz + 1) (frmsPlyd + 1)
           gamesPlayed nnEnvRet
 
+
 chooseAction mem frmsPlyd nnEnv = do
     -- Random number generator
     g <- getStdGen
     let (rndRl,_) = randomR (0.0, 1.0) g
-
     g <- newStdGen
     let (rndIdx,_) = randomR (0, (length CF.availActns) - 1) g
 
@@ -68,12 +59,12 @@ chooseAction mem frmsPlyd nnEnv = do
     let actRandomly = rndRl < epsilon
         act = do
                 if actRandomly 
-                  then do let rndAct = (CF.availActns!!rndIdx)
+                  then do let rndAct = (CF.availActns !! rndIdx)
                           putStrLn ("Random Action " ++ rndAct)
                           return rndAct
-                  else do nnAct <- NN.nnBestAction mem
+                  else do nnAct <- NN.nnBestAction mem nnEnv
                           --let nnAct = "0"
                           putStrLn ("Neural Network Choses " ++ nnAct)
                           return nnAct
     action <- act
-    return (action, ())
+    return (action, nnEnv)
