@@ -4,12 +4,12 @@ A Haskell implementation of the Deep Mind Atari AI
 
 ##Sub Components
 
-- [ ] Strict named pipe interface
-- [ ] Frame preprocessing
-- [ ] Neural Network Initilaization
-- [ ] Neural Network Output function
+- [X] Strict named pipe interface
+- [X] Frame preprocessing
+- [X] Neural Network Initilaization
+- [X] Neural Network Output function
 - [ ] Neural Network Training function
-- [ ] CPU 4D tensor convolution with stride paramter
+- [X] CPU 4D tensor convolution with stride paramter
 - [ ] GPU 4D tensor convolution with stride parameter
 
 
