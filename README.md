@@ -2,7 +2,7 @@ DM-AtariAI
 ==========
 A Haskell implementation of the Deep Mind Atari AI
 
-##Sub Components
+##Sub Components Checklist
 
 - [X] Strict named pipe interface
 - [X] Frame preprocessing
