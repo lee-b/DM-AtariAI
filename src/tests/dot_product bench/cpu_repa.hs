@@ -12,9 +12,9 @@ main = do
   let n_trials = 1000
   start <- getCurrentTime
   res <- repeateTest n_trials (0.0)
+  putStrLn $ show res
   stop <- getCurrentTime
   print $ (diffUTCTime stop start) / (P.fromIntegral n_trials)
-  putStrLn $ show res
 
 
 repeateTest counter accum = do
