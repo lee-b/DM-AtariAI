@@ -1,6 +1,6 @@
 DM-AtariAI
 ==========
-A Haskell implementation of the Deep Mind Atari AI. Work has been done here https://github.com/kristjankorjus/Replicating-DeepMind to build the bot in python and I am referring to that code for ideas of the impementation.
+A Haskell implementation of the Deep Mind Atari AI. Work has been done here https://github.com/kristjankorjus/Replicating-DeepMind to build the bot in python and I am referring to it for ideas of the impementation.
 
 ## Base Features
 
