@@ -1,4 +1,6 @@
+{-# OPTIONS_GHC -fcontext-stack=100 #-}
 {-# LANGUAGE TypeOperators #-}
+
 
 module Convolve where
 import qualified Data.Array.Accelerate.IO as A
@@ -52,6 +54,9 @@ interleave (x:xs) ys = x:interleave ys xs
 stencil5ToList :: (t, t, t, t, t) -> [t]
 stencil5ToList (e1,e2,e3,e4,e5) = [e1,e2,e3,e4,e5]
 
+stencil9ToList :: (t, t, t, t, t, t, t, t, t) -> [t]
+stencil9ToList (e1,e2,e3,e4,e5,e6,e7,e8,e9) = [e1,e2,e3,e4,e5,e6,e7,e8,e9]
+
 convolveStencil4x4 :: A.Acc (A.Array (((A.Z A.:. Int) A.:. Int) A.:. Int) Double)
                    -> ((A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double),
                        (A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double),
@@ -68,18 +73,61 @@ convolveStencil4x4 filtersTensor stencil1 stencil2 =
   let fltrChoice = stencil5ToList ((stencil5ToList stencil2) !! 0) !! 0
       indList = ([(r,c) | r <- [0..3], c <- [0..3]] :: [(Int, Int)]) 
       indSten (r,c) = stencil5ToList ((stencil5ToList stencil1) !! r) !! c
-      --indFilter (r,c) = A.fromIntegral fltrChoice 
-      --indFilter (r,c) = filtersTensor A.! (A.lift (A.Z A.:. (0 :: Int) A.:. (0 :: Int) A.:. (0 :: Int))) 
-      --indFilter (r,c) = A.lift (1.34 :: Double) 
       indFilter (r,c) =  filtersTensor A.! (A.lift (A.Z A.:. r A.:. c A.:. fltrChoice))
   in foldl (\acc ind -> acc + (indSten ind) * (indFilter ind)) 0 indList
+
+convolveStencil8x8 :: A.Acc (A.Array (((A.Z A.:. Int) A.:. Int) A.:. Int) Double)
+                   -> ((A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, 
+                      A.Exp Double, A.Exp Double, A.Exp Double),
+                       (A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, 
+                        A.Exp Double, A.Exp Double, A.Exp Double),
+                       (A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, 
+                        A.Exp Double, A.Exp Double, A.Exp Double),
+                       (A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, 
+                        A.Exp Double, A.Exp Double, A.Exp Double),
+                       (A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, 
+                        A.Exp Double, A.Exp Double, A.Exp Double),
+                       (A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, 
+                        A.Exp Double, A.Exp Double, A.Exp Double),
+                       (A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, 
+                        A.Exp Double, A.Exp Double, A.Exp Double),
+                       (A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, 
+                        A.Exp Double, A.Exp Double, A.Exp Double),
+                       (A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, A.Exp Double, 
+                        A.Exp Double, A.Exp Double, A.Exp Double))
+                   -> ((A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, 
+                      A.Exp Int, A.Exp Int, A.Exp Int),
+                       (A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, 
+                        A.Exp Int, A.Exp Int, A.Exp Int),
+                       (A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, 
+                        A.Exp Int, A.Exp Int, A.Exp Int),
+                       (A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, 
+                        A.Exp Int, A.Exp Int, A.Exp Int),
+                       (A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, 
+                        A.Exp Int, A.Exp Int, A.Exp Int),
+                       (A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, 
+                        A.Exp Int, A.Exp Int, A.Exp Int),
+                       (A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, 
+                        A.Exp Int, A.Exp Int, A.Exp Int),
+                       (A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, 
+                        A.Exp Int, A.Exp Int, A.Exp Int),
+                       (A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, A.Exp Int, 
+                        A.Exp Int, A.Exp Int, A.Exp Int))
+                   -> A.Exp Double
+convolveStencil8x8 filtersTensor stencil1 stencil2 = 
+  let fltrChoice = stencil9ToList ((stencil9ToList stencil2) !! 0) !! 0
+      indList = ([(r,c) | r <- [0..7], c <- [0..7]] :: [(Int, Int)]) 
+      indSten (r,c) = stencil9ToList ((stencil9ToList stencil1) !! r) !! c
+      indFilter (r,c) =  filtersTensor A.! (A.lift (A.Z A.:. r A.:. c A.:. fltrChoice))
+  in foldl (\acc ind -> acc + (indSten ind) * (indFilter ind)) 0 indList
+
 
 conv2D 
   :: (Monad m)
   => [RU.Array R.D R.DIM2 Double]
   -> [RU.Array R.D R.DIM2 Double]
   -> Int
-  -> m([A.Array A.DIM2 Double])
+  -> m([RU.Array R.D R.DIM2 Double])
 conv2D imgs fltrs strd = do
   -- convole the nth img with the nth signal using stride of size strd
   -- All imgs must be same size
@@ -107,9 +155,20 @@ conv2D imgs fltrs strd = do
                                       (head fltrsReshaped) 
                                       (tail fltrsReshaped))
   let fltrsTensorGPU = (A.use (A.fromRepa fltrsTensor))
-  let res = BE.run (A.stencil2 (convolveStencil4x4 fltrsTensorGPU) -- (A.use (A.fromRepa fltr))) 
-                              A.Clamp 
-                              (A.use (A.fromRepa signalArray))
-                              A.Clamp 
-                              (A.use (A.fromRepa signalFltrInd)))
-  return [res]
+      res = if strd == 2 then
+              R.delay $ A.toRepa $ BE.run (A.stencil2 (convolveStencil4x4 fltrsTensorGPU) -- (A.use (A.fromRepa fltr))) 
+                                                          (A.Constant (0.0 :: Double)) 
+                                                          (A.use (A.fromRepa signalArray))
+                                                          (A.Constant (0 :: Int))
+                                                          (A.use (A.fromRepa signalFltrInd)))
+            else
+              R.delay $ A.toRepa $ BE.run (A.stencil2 (convolveStencil8x8 fltrsTensorGPU) -- (A.use (A.fromRepa fltr))) 
+                                                          (A.Constant (0.0 :: Double)) 
+                                                          (A.use (A.fromRepa signalArray))
+                                                          (A.Constant (0 :: Int))
+                                                          (A.use (A.fromRepa signalFltrInd)))
+      startingIndxs = [U.sol [s, 0] | s <- [0,(imgDim2 + fltrDim1)..(length imgs - 1)*(imgDim2 + fltrDim1)]]
+      extractFormated size arr strt = R.extract strt size arr
+      extractHelper = extractFormated (U.sol [imgDim2, imgDim1]) res
+      resSegmented = map extractHelper startingIndxs
+  return resSegmented
