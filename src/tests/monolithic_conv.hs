@@ -13,7 +13,7 @@ import qualified Data.Array.Accelerate as A
 import qualified Data.Array.Accelerate.CUDA as BE
 
 main = do
-    let img = A.use $ A.fromList (A.Z A.:. (84 :: Int) A.:. (348 :: Int)) [1..84*348]
+    let img = A.use $ A.fromList (A.Z A.:. (84 :: Int) A.:. (5880 :: Int)) [0.00137 | _ <- [1..84*5880]]
     let fltr = A.use $ A.fromList (A.Z A.:. (8 :: Int) A.:. (8 :: Int)) [1..64]
 
     start <- getCurrentTime
