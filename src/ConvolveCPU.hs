@@ -1,4 +1,4 @@
-module Convolve where
+module ConvolveCPU where
 import qualified Data.Array.Repa as R
 import qualified Data.Array.Repa.Repr.Unboxed as RU
 import qualified Data.Array.Repa.Index as RI
