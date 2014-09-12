@@ -153,10 +153,21 @@ signalFltrIndLyr2 = (A.computeAccS (foldl' R.append
                                          (head maskListLyr2)
                                          (tail maskListLyr2)))
 
+-- no trailing padding included
 signalArrayShapeLyr1 = ((U.sol [84 + (84 + 8) * (63), 84]) :: R.DIM2)
 signalArrayShapeLyr2 = ((U.sol [20 + (20 + 4) * (511), 20]) :: R.DIM2)
 
+signalArrayShapeUnrepLyr1 = ((U.sol [(84 + 8) * (4), 84]) :: R.DIM2)
+signalArrayShapeUnrepLyr2 = ((U.sol [(20 + 4) * (16), 20]) :: R.DIM2)
+
+-- trailing padding included
+--signalArrayShapeRepLyr1 = ((U.sol [(84 + 8) * (64), 84]) :: R.DIM2)
+signalArrayShapeRepLyr1 = (A.Z A.:. (84 :: Int) A.:. ((84 + 8) * (64) :: Int)) 
+--signalArrayShapeRepLyr2 = ((U.sol [(20 + 4) * (512), 20]) :: R.DIM2)
+signalArrayShapeRepLyr2 = (A.Z A.:. (20 :: Int) A.:. ((20 + 4) * (512) :: Int)) 
+
 placeHolderArr = R.delay $ R.fromListUnboxed ((U.sol [2]) :: R.DIM1) ([1..2] :: [Int])
+
 
 conv2D 
   :: (Monad m)
@@ -171,16 +182,31 @@ conv2D !imgs !fltrs !strd = do
   -- imgs and fltrs must be lists of same length
   let (R.Z R.:. imgDim1 R.:. imgDim2) = R.extent (V.head imgs)
       (R.Z R.:. fltrDim1 R.:. fltrDim2) = R.extent (head fltrs)
-      nSgnls = if imgDim1 == 84 then 64 else 512 
+      nSgnls = if imgDim1 == 84 then 64 :: Int else 512 :: Int 
+      nUniqeFltrs = if imgDim1 == 84 then 16 :: Int else 32 :: Int 
   let signalArrayShape = if imgDim1 == 84 then signalArrayShapeLyr1 else signalArrayShapeLyr2
-  let signalArray = A.computeAccS  (R.unsafeTraverse placeHolderArr
-                                                     (\_-> signalArrayShape)
-                                                     (\f (R.Z R.:. i R.:. j) -> 
-                                                      let jMod = mod j (imgDim2 + fltrDim2) in
+  let signalArrayShapeUnrep = if imgDim1 == 84 then signalArrayShapeUnrepLyr1 else signalArrayShapeUnrepLyr2
+  let signalArrayShapeRep = if imgDim1 == 84 then signalArrayShapeRepLyr1 else signalArrayShapeRepLyr2
+  signalArrayUnrep <- A.computeAccP (R.unsafeTraverse placeHolderArr
+                                                      (\_-> signalArrayShapeUnrep)
+                                                      (\f (R.Z R.:. i R.:. j) -> 
+                                                        let jMod = mod j (imgDim2 + fltrDim2) in
                                                           if jMod < imgDim2 then
                                                             (imgs V.! (mod (quot j (imgDim2 + fltrDim2)) (V.length imgs))) R.! (U.sol [jMod, i])
                                                           else
                                                             0))
+  let signalArrayUnrepAcc = A.use (A.fromRepa signalArrayUnrep)
+      signalArrayUnrepSl = A.slice signalArrayUnrepAcc (A.lift (A.Z A.:. A.All A.:. A.All))
+      signalArrayRep = A.replicate (A.lift (A.Z A.:. A.All A.:. (nUniqeFltrs) A.:. A.All)) signalArrayUnrepSl
+      signalArray = A.reshape (A.lift signalArrayShapeRep) signalArrayRep
+  --let signalArray = A.computeAccS  (R.unsafeTraverse placeHolderArr
+  --                                                   (\_-> signalArrayShape)
+  --                                                   (\f (R.Z R.:. i R.:. j) -> 
+  --                                                    let jMod = mod j (imgDim2 + fltrDim2) in
+  --                                                        if jMod < imgDim2 then
+  --                                                          (imgs V.! (mod (quot j (imgDim2 + fltrDim2)) (V.length imgs))) R.! (U.sol [jMod, i])
+  --                                                        else
+  --                                                          0))
 
 
   let signalFltrInd = if imgDim1 == 84 then signalFltrIndLyr1 else signalFltrIndLyr2
@@ -193,13 +219,13 @@ conv2D !imgs !fltrs !strd = do
       !res = if fltrDim1 == 4 then
               R.delay $ A.toRepa $ BE.run (A.stencil2 (convolveStencil4x4 fltrsTensorGPU) -- (A.use (A.fromRepa fltr))) 
                                                           (A.Constant (0.0 :: Float)) 
-                                                          (A.use (A.fromRepa signalArray))
+                                                          (signalArray)
                                                           (A.Constant (0 :: Int))
                                                           (A.use (A.fromRepa signalFltrInd)))
             else
               R.delay $ A.toRepa $ BE.run (A.stencil2 (convolveStencil8x8 fltrsTensorGPU) -- (A.use (A.fromRepa fltr))) 
                                                           (A.Constant (0.0 :: Float)) 
-                                                          (A.use (A.fromRepa signalArray))
+                                                          (signalArray)
                                                           (A.Constant (0 :: Int))
                                                           (A.use (A.fromRepa signalFltrInd)))
       !startingIndxs = [U.sol [s, 0] | s <- [0,(imgDim2 + fltrDim1)..(nSgnls - 1)*(imgDim2 + fltrDim1)]]
