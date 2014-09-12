@@ -10,7 +10,7 @@ A Haskell implementation of the Deep Mind Atari AI. Work has been done here http
 - [X] Neural Network Output function
 - [ ] Neural Network Training function
 - [X] CPU 4D tensor convolution with stride paramter
-- [ ] GPU 4D tensor convolution with stride parameter
+- [x] GPU 4D tensor convolution with stride parameter
 
 
 ##Running
