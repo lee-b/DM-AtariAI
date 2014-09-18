@@ -1,10 +1,11 @@
 module ALE_Interface where
+
 import System.Directory
 import System.Process
 import System.Posix.Files
 import System.Posix.IO
-import qualified Data.ByteString.Char8 as C
-import qualified Configure as CF
+import qualified Data.ByteString.Char8          as C
+import qualified Configure                      as CF
 
 initialize = 
  do fo_ex <- doesFileExist "ale_fifo_out"
@@ -15,8 +16,9 @@ initialize =
     case fi_ex of True -> (readProcess "rm" ["ale_fifo_in"] "")
                   False -> (readProcess "ls" [] "")
 
-    createNamedPipe "ale_fifo_out" $ unionFileModes ownerReadMode ownerWriteMode
-    createNamedPipe "ale_fifo_in" $ unionFileModes ownerReadMode ownerWriteMode
+    let fMode = unionFileModes ownerReadMode ownerWriteMode
+    createNamedPipe "ale_fifo_out" fMode
+    createNamedPipe "ale_fifo_in" fMode
 
     -- Run ALE
     runCommand ("../ale/ale_0.4.4/ale_0_4/ale \
@@ -25,7 +27,7 @@ initialize =
                 \-disable_colour_averaging true \
                 \-run_length_encoding false \
                 \-frame_skip " ++ show CF.frameSkip ++ " \
-                \-display_screen " ++ show (if CF.displayScreen then "true" 
+                \-display_screen " ++ show (if CF.displayScreen then "true"
                                             else "false") ++ " \
                 \../ale/ale_0.4.4/ale_0_4/roms/" ++ show CF.rom)
 

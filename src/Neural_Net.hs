@@ -1,25 +1,20 @@
-{-# OPTIONS_GHC -fcontext-stack=100 -Odph -rtsopts -threaded 
--fno-liberate-case -funfolding-use-threshold1000 
--funfolding-keeness-factor1000 -fllvm -optlo-O3 #-}
-
 module Neural_Net where
+
 import System.Random
-import qualified Data.Array.Repa as R
-import qualified Data.Array.Repa.Eval             as R
-import qualified Data.Array.Repa.Unsafe           as R
-import qualified Data.Vector as V
-import qualified Data.Vector.Unboxed as VUN
---import qualified Convolve as CV
-import qualified ConvolveV2 as CV
-import qualified Data.Array.Repa.Repr.Unboxed as RU
-import qualified Data.Array.Repa.Algorithms.Matrix as RM
-import qualified Data.Array.Repa.Algorithms.Randomish as RR
-import qualified Configure as CF
-import qualified Utils as U
+import qualified Data.Array.Repa                                      as R
+import qualified Data.Array.Repa.Eval                                 as R
+import qualified Data.Array.Repa.Unsafe                               as R
+import qualified Data.Vector                                          as V
+import qualified Data.Vector.Unboxed                                  as VUN
+--import qualified ConvolveCPU                                        as CV
+import qualified ConvolveGPU                                          as CV
+import qualified Data.Array.Repa.Repr.Unboxed                         as RU
+import qualified Data.Array.Repa.Algorithms.Matrix                    as RM
+import qualified Data.Array.Repa.Algorithms.Randomish                 as RR
+import qualified Configure                                            as CF
+import qualified Utils                                                as U
 
 -- Define the parameters for the two convulational layers
---type CnvLyr1Config sh = ([Int], Int, Int, R.DIM4)
---type CnvLyr2Config sh = ([Int], Int, Int, R.DIM2)
 cnvLyr1Config = ([4, 84, 84],  16, [4, 8, 8],  4, U.sol [20, 20, 16, 1])
 cnvLyr2Config = ([16, 20, 20], 32, [16, 4, 4], 2, U.sol [2592, 1])
 
@@ -43,10 +38,15 @@ initilaizeEnv =
                     wBnd = sqrt (6.0 / (fromIntegral (numInpPer + numOutPer)))
                     dummyWieghtTest = R.fromListUnboxed 
                                         (U.sol $ reverse (numFltrs : fltrDim))
-                                        [0.037 | _ <-  [1..numFltrs * product fltrDim]]
+                                        [0.037 | 
+                                         _ <-  [1..numFltrs * product fltrDim]]
                     w = dummyWieghtTest
+                    -- XXX reactivate this
                     --w = RR.randomishDoubleArray 
-                          --(U.sol $ reverse (numFltrs : fltrDim)) (-wBnd) wBnd 1
+                    --      (U.sol $ reverse (numFltrs : fltrDim))
+                    --        (-wBnd)
+                    --        wBnd
+                    --        1
                     b = R.fromUnboxed ((U.sol [ftrMpSd, ftrMpSd, numFltrs, 1])) 
                           (VUN.replicate (numFltrs * ftrMpSd * ftrMpSd) 
                           (0 :: Float))
@@ -61,10 +61,15 @@ initilaizeEnv =
                     wBnd = sqrt (6.0 / (fromIntegral (numInpPer + numOutPer)))
                     dummyWieghtTest = R.fromListUnboxed 
                                         (U.sol $ reverse (numFltrs : fltrDim))
-                                        [0.037 | _ <- [1..numFltrs * product fltrDim]]
+                                        [0.037 |
+                                         _ <- [1..numFltrs * product fltrDim]]
                     w = dummyWieghtTest
+                    -- XXX reactivate this
                     --w = RR.randomishDoubleArray
-                    --      (U.sol $ reverse (numFltrs : fltrDim)) (-wBnd) wBnd 1
+                    --      (U.sol $ reverse (numFltrs : fltrDim))
+                    --        (-wBnd) 
+                    --        wBnd 
+                    --        1
                     b = R.fromUnboxed ((U.sol [ftrMpSd, ftrMpSd, numFltrs, 1])) 
                           (VUN.replicate (numFltrs * ftrMpSd * ftrMpSd)
                           (0 :: Float))

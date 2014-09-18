@@ -1,20 +1,18 @@
--- Author: Hamzeh Alsalhi <93hamsal@gmail.com>
-{-# OPTIONS_GHC -fcontext-stack=100 -Odph -rtsopts -threaded -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000 -fllvm -optlo-O3 #-}
+-- Author: Hamzeh Alsalhi <ha258@cornell.edu>
+
 module Main where
+
 import Data.List.Split
-
-
 import System.Posix.Files
 import System.Posix.IO
 import System.Random
-
-import qualified Data.ByteString.Char8 as C
-import qualified Data.Vector as V
-import qualified Data.Vector.Unboxed as VUN
-import qualified Neural_Net as NN
-import qualified Configure as CF
-import qualified Image_Processing as IP
-import qualified ALE_Interface as ALE
+import qualified Data.ByteString.Char8                as C
+import qualified Data.Vector                          as V
+import qualified Data.Vector.Unboxed                  as VUN
+import qualified Neural_Net                           as NN
+import qualified Configure                            as CF
+import qualified Image_Processing                     as IP
+import qualified ALE_Interface                        as ALE
 
 
 main = do
@@ -23,7 +21,8 @@ main = do
   str <- C.hGetLine fromA
   fdWrite toA "1,18\n"
   -- Enter the main loop
-  playGame fromA toA V.empty (0 :: Integer) (0 :: Int) (0 :: Int) NN.initilaizeEnv
+  playGame fromA toA V.empty (0 :: Integer) (0 :: Int) (0 :: Int)
+           NN.initilaizeEnv
 
 
 playGame fromA toA mem memSz frmsPlyd gamesPlayed nnEnv = 
@@ -42,7 +41,8 @@ playGame fromA toA mem memSz frmsPlyd gamesPlayed nnEnv =
       let smallScr = (IP.scrnToNnInp scrStr) :: VUN.Vector Float
       putStrLn $ "Frames Played " ++ (show frmsPlyd)
       if memSz >= CF.memSize then
-        playGame fromA toA (smallScr `V.cons` (V.init mem)) memSz (frmsPlyd + 1) 
+        playGame fromA toA (smallScr `V.cons` (V.init mem)) memSz
+                 (frmsPlyd + 1) 
           gamesPlayed nnEnvRet
       else 
         playGame fromA toA (smallScr `V.cons` mem) (memSz + 1) (frmsPlyd + 1)

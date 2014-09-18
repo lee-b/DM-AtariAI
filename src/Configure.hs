@@ -1,4 +1,3 @@
--- Edit run specific parameters in here
 module Configure where
 
 -- Choose ROM and actions available to the AI in the game being played
