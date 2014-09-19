@@ -25,7 +25,7 @@ ALE (Arcade Learning Environement) and its dependencies
 
 
 ## Release - 0.1
-![](images/cpu-sat-v0.1)
+![](images/cpu-sat-v0.1.png)
 
 ## Release - 0.2
-![](images/cpu-sat-v0.2)
+![](images/cpu-sat-v0.2.png)
