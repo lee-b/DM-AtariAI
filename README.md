@@ -22,3 +22,10 @@ A Haskell implementation of the Deep Mind Atari AI. Work has been done here http
 ##Dependencies
 
 ALE (Arcade Learning Environement) and its dependencies
+
+
+## Release - 0.1
+!()[images/cpu-sat-v0.1]
+
+## Release - 0.2
+!()[images/cpu-sat-v0.1]
