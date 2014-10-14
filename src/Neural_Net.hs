@@ -6,8 +6,8 @@ import qualified Data.Array.Repa.Eval                                 as R
 import qualified Data.Array.Repa.Unsafe                               as R
 import qualified Data.Vector                                          as V
 import qualified Data.Vector.Unboxed                                  as VUN
---import qualified ConvolveCPU                                        as CV
-import qualified ConvolveGPU                                          as CV
+import qualified ConvolveCPU                                          as CV
+--import qualified ConvolveGPU                                          as CV
 import qualified Data.Array.Repa.Repr.Unboxed                         as RU
 import qualified Data.Array.Repa.Algorithms.Matrix                    as RM
 import qualified Data.Array.Repa.Algorithms.Randomish                 as RR
@@ -107,14 +107,14 @@ nnBestAction
   :: (Monad m)
   => V.Vector (VUN.Vector Float)
   -> NNEnv
-  -> m ([Char])
-nnBestAction mem nnEnv = do
+  -> m (Char)
+nnBestAction screens nnEnv = do
   -- Link the layers and give output
   let ((w1, w2, w3, w4), (b1, b2, b3, b4)) = nnEnv
-  if V.length mem < 4 then 
-      return "0"
+  if V.length screens < 4 then 
+      return '0'
   else do
-      actnProb <- evalActnProb nnEnv (getLastState mem)
+      actnProb <- evalActnProb nnEnv (getLastState screens)
         -- Get the most probable action
       return (CF.availActns !! (VUN.maxIndex actnProb))
 
@@ -132,35 +132,60 @@ evalActnProb nnEnv input = do
   actnProb <- outptLyr4 out3 w4 b4
   return actnProb
 
+
+trainHelper
+  :: (Monad m)
+  => m(NNEnv)
+  -> (RU.Array R.D R.DIM4 Float, Char, Integer, RU.Array R.D R.DIM4 Float)
+  -> m(NNEnv)
+trainHelper nnEnv transition = do
+    let (pre, act, reward, post) = transition
+    nnEnvUnwraped <- nnEnv
+    -- Train the nn on transition here
+    preProb <- evalActnProb nnEnvUnwraped pre
+    postProb <- evalActnProb nnEnvUnwraped post
+
+    return nnEnvUnwraped
+
+
 nnTrain
   :: V.Vector (VUN.Vector Float)
+  -> V.Vector Char
+  -> V.Vector Integer
   -> NNEnv
   -> IO NNEnv
-nnTrain mem nnEnv = do
+nnTrain screens actions rewards nnEnv = do
   let ((w1, w2, w3, w4), (b1, b2, b3, b4)) = nnEnv
-      lMem = V.length mem
+      lMem = V.length screens
   g <- newStdGen
 
-  -- Pick four random states from memory and train on them
-  let indices = take 4 (randomRs (0, lMem) g :: [Int])
-      states = map (getState mem) indices
-      --actnProbs = map (evalActnProb nnEnv) states
-      -- XXX fold with a helper here to acumulate an altered nnEnv at each step
-  return initilaizeEnv -- "XXX"
+  if V.length screens < 4 then do
+    return nnEnv
+  else do
+    -- Pick n random states from memory and train on them
+    let numMiniBatches = 32
+        indices = take numMiniBatches (randomRs (0, lMem - 2) g :: [Int])
+        getTransition i = ((getState screens i), actions V.! i, rewards V.! i, (getState screens (i + 1)))
+        transitions = map getTransition indices
+    putStrLn ("Training on state indices: " ++ show indices)
+
+    -- Our fold helper that accumulates on nnEnv
+    nnNew <- (foldl trainHelper (return nnEnv) transitions)
+    return nnNew
 
 
-getState mem n =
+getState screens n =
     -- Consturct the indices of the 4 frames and extract them from mem
     let indices = map (max 0) [n - 3..n]
-        screens = map (mem V.!) indices
-        as1DVector =  foldl (VUN.++) (head screens) (tail screens)
+        screenState = map (screens V.!) indices
+        as1DVector =  foldl (VUN.++) (head screenState) (tail screenState)
         asTensor = R.delay (R.fromUnboxed ((U.sol [84, 84, 4, 1]) :: R.DIM4)
                             as1DVector)
     in asTensor
 
 
-getLastState mem =
-    let last4 = V.take 4 mem
+getLastState screens =
+    let last4 = V.take 4 screens
         as1DVector = V.foldl (VUN.++) (V.head last4) (V.tail last4)
         asTensor = R.delay (R.fromUnboxed (U.sol [84, 84, 4, 1]) as1DVector)
     in asTensor
