@@ -14,6 +14,7 @@ import qualified Utils                                          as U
 import qualified Data.Array.Accelerate                          as A
 import qualified Data.Array.Accelerate.CUDA                     as BE
 -- import qualified Data.Array.Accelerate.Interpreter           as BE
+import qualified GHC.IO.Handle.Types                            as T
 
 flatten !e =
   -- Takes a matirx and flattens it to a list
@@ -21,12 +22,13 @@ flatten !e =
   in R.reshape (R.Z R.:. dim) e
 
 conv4D
-  :: (Monad m) 
-  => RU.Array R.D R.DIM4 Float
+  :: T.Handle
+  -> T.Handle
+  -> RU.Array R.D R.DIM4 Float
   -> RU.Array R.D R.DIM4 Float
   -> Int
-  -> m(RU.Array R.D R.DIM4 Float)
-conv4D !img !fltr !strd = do
+  -> IO (RU.Array R.D R.DIM4 Float)
+conv4D toC fromC !img !fltr !strd = do
       -- 1          x imageDepth  x imageWidth  x imageHeight
   let _:(!imgDpth):(!imgWdth):(!imgHght):_ = R.deepSeqArrays [img, fltr]
                                                              (reverse $ U.los 

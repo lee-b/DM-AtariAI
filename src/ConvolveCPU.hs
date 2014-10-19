@@ -5,14 +5,16 @@ import qualified Data.Array.Repa.Repr.Unboxed                   as RU
 import qualified Data.Array.Repa.Index                          as RI
 import qualified Data.Array.Repa.Algorithms.Convolve            as RC
 import qualified Utils                                          as U
+import qualified GHC.IO.Handle.Types                            as T
 
 conv4D
-  :: (Monad m) 
-  => RU.Array R.D RI.DIM4 Float
+  :: T.Handle
+  -> T.Handle
+  -> RU.Array R.D RI.DIM4 Float
   -> RU.Array R.D RI.DIM4 Float
   -> Int
-  -> m(RU.Array R.D RI.DIM4 Float)
-conv4D img fltr strd = do
+  -> IO (RU.Array R.D RI.DIM4 Float)
+conv4D toC fromC img fltr strd = do
   -- Inputs: both array inputs are 4d tensors, second dimension must match,
   --         int strd is a stride for the convultion
   -- Output: Delayed 4D tensor

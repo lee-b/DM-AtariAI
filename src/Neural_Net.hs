@@ -1,13 +1,17 @@
 module Neural_Net where
 
 import System.Random
+import qualified System.Posix.Types as P
+import qualified GHC.IO.Handle.Types as T
+import Data.Dynamic
 import qualified Data.Array.Repa                                      as R
 import qualified Data.Array.Repa.Eval                                 as R
 import qualified Data.Array.Repa.Unsafe                               as R
 import qualified Data.Vector                                          as V
 import qualified Data.Vector.Unboxed                                  as VUN
-import qualified ConvolveCPU                                          as CV
+--import qualified ConvolveCPU                                          as CV
 --import qualified ConvolveGPU                                          as CV
+import qualified ConvolvePY                                           as CV
 import qualified Data.Array.Repa.Repr.Unboxed                         as RU
 import qualified Data.Array.Repa.Algorithms.Matrix                    as RM
 import qualified Data.Array.Repa.Algorithms.Randomish                 as RR
@@ -104,17 +108,18 @@ initilaizeEnv =
 
 
 nnBestAction
-  :: (Monad m)
-  => V.Vector (VUN.Vector Float)
+  :: T.Handle 
+  -> T.Handle
+  -> V.Vector (VUN.Vector Float)
   -> NNEnv
-  -> m (Char)
-nnBestAction screens nnEnv = do
+  -> IO (Char)
+nnBestAction toC fromC screens nnEnv = do
   -- Link the layers and give output
   let ((w1, w2, w3, w4), (b1, b2, b3, b4)) = nnEnv
   if V.length screens < 4 then 
       return '0'
   else do
-      actnProb <- evalActnProb nnEnv (getLastState screens)
+      actnProb <- evalActnProb toC fromC nnEnv (getLastState screens)
         -- Get the most probable action
       return (CF.availActns !! (VUN.maxIndex actnProb))
 
@@ -123,38 +128,41 @@ nnBestAction screens nnEnv = do
 --  => NNEnv 
 --  -> RU.Array R.D R.DIM4 Float 
 --  -> m(VUN.Vector Float)
-evalActnProb nnEnv input = do
+evalActnProb toC fromC nnEnv input = do
   -- Link the layers and give output
   let ((w1, w2, w3, w4), (b1, b2, b3, b4)) = nnEnv
-  out1 <- cnvLyr cnvLyr1Config input w1 b1
-  out2 <- cnvLyr cnvLyr2Config out1 w2 b2
+  out1 <- cnvLyr toC fromC cnvLyr1Config input w1 b1
+  out2 <- cnvLyr toC fromC cnvLyr2Config out1 w2 b2
   out3 <- cnctdLyr3 out2 w3 b3
   actnProb <- outptLyr4 out3 w4 b4
   return actnProb
 
 
 trainHelper
-  :: (Monad m)
-  => m(NNEnv)
+  :: T.Handle
+  -> T.Handle
+  -> IO (NNEnv)
   -> (RU.Array R.D R.DIM4 Float, Char, Integer, RU.Array R.D R.DIM4 Float)
-  -> m(NNEnv)
-trainHelper nnEnv transition = do
+  -> IO (NNEnv)
+trainHelper toC fromC nnEnv transition = do
     let (pre, act, reward, post) = transition
     nnEnvUnwraped <- nnEnv
     -- Train the nn on transition here
-    preProb <- evalActnProb nnEnvUnwraped pre
-    postProb <- evalActnProb nnEnvUnwraped post
+    preProb <- evalActnProb toC fromC nnEnvUnwraped pre
+    postProb <- evalActnProb toC fromC nnEnvUnwraped post
 
     return nnEnvUnwraped
 
 
 nnTrain
-  :: V.Vector (VUN.Vector Float)
+  :: T.Handle
+  -> T.Handle
+  -> V.Vector (VUN.Vector Float)
   -> V.Vector Char
   -> V.Vector Integer
   -> NNEnv
   -> IO NNEnv
-nnTrain screens actions rewards nnEnv = do
+nnTrain toC fromC screens actions rewards nnEnv = do
   let ((w1, w2, w3, w4), (b1, b2, b3, b4)) = nnEnv
       lMem = V.length screens
   g <- newStdGen
@@ -170,7 +178,7 @@ nnTrain screens actions rewards nnEnv = do
     putStrLn ("Training on state indices: " ++ show indices)
 
     -- Our fold helper that accumulates on nnEnv
-    nnNew <- (foldl trainHelper (return nnEnv) transitions)
+    nnNew <- (foldl (trainHelper toC fromC) (return nnEnv) transitions)
     return nnNew
 
 
@@ -197,9 +205,9 @@ getLastState screens =
 --  -> RU.Array R.U R.DIM4 Float 
 --  -> RU.Array R.U R.DIM4 Float
 --  -> m(sh2)
-cnvLyr lyrConfig input w b = do
+cnvLyr toC fromC lyrConfig input w b = do
   let (_, _, _, strd, outPShape) = lyrConfig
-  convOutpt <- (CV.conv4D input (R.delay w) strd)
+  convOutpt <- (CV.conv4D toC fromC input (R.delay w) strd)
   let thresh = (0.0 :: Float)
       actvtn =  (R.+^) convOutpt b
       abvThresh = R.map (\e -> if e > thresh then (e - thresh) else 0) actvtn
